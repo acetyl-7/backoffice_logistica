@@ -1,0 +1,20 @@
+CompileFlags:
+  Add:
+    # Flutter Windows ephemeral headers (dart_project.h, flutter_window.h, etc.)
+    - -Iwindows/flutter/ephemeral/cpp_client_wrapper/include
+    # Flutter Windows core headers (flutter_windows.h, etc.)
+    - -Iwindows/flutter/ephemeral
+    # Runner source directory
+    - -Iwindows/runner
+    # Force C++17 to match Flutter Windows CMake settings
+    - -std=c++17
+    # Windows platform defines
+    - -DWIN32
+    - -D_WINDOWS
+    - -DUNICODE
+    - -D_UNICODE
+
+Diagnostics:
+  Suppress:
+    # Suppress warnings from system/Flutter headers we don't control
+    - -Wno-pragma-once-outside-header
