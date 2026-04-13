@@ -7,6 +7,7 @@ import 'tasks_panel.dart';
 import 'incidents_panel.dart';
 import 'images_panel.dart';
 import 'driver_authorization_panel.dart';
+import 'trips_panel.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -22,6 +23,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool? selectedDriverIsAuthorized;
   Map<String, dynamic>? selectedDriverData;
   String currentView = 'menu';
+  int _globalSelectedIndex = 0;
 
   Future<void> _markDriverMessagesAsRead(String driverId) async {
     try {
@@ -68,7 +70,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       body: Row(
         children: [
-          // ── Lista Lateral (Esquerda) ──
+          NavigationRail(
+            selectedIndex: _globalSelectedIndex,
+            onDestinationSelected: (int index) {
+              setState(() {
+                _globalSelectedIndex = index;
+              });
+            },
+            labelType: NavigationRailLabelType.all,
+            backgroundColor: const Color(0xFF0F172A),
+            unselectedIconTheme: const IconThemeData(color: Colors.white54),
+            unselectedLabelTextStyle: const TextStyle(color: Colors.white54),
+            selectedIconTheme: const IconThemeData(color: Colors.white),
+            selectedLabelTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            destinations: const [
+              NavigationRailDestination(
+                icon: Icon(Icons.people_outline),
+                selectedIcon: Icon(Icons.people),
+                label: Text('Motoristas'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.map_outlined),
+                selectedIcon: Icon(Icons.map),
+                label: Text('Rotas'),
+              ),
+            ],
+          ),
+          Expanded(
+            child: _globalSelectedIndex == 0
+                ? _buildMainDashboard()
+                : const TripsPanel(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainDashboard() {
+    return Row(
+      children: [
+        // ── Lista Lateral (Esquerda) ──
           Container(
             width: 300,
             decoration: BoxDecoration(
@@ -242,8 +283,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: _buildRightPanel(),
           ),
         ],
-      ),
-    );
+      );
   }
 
   Widget _buildSectionHeader({

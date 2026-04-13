@@ -72,7 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (widget.selectedDriverId == null) return;
 
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      FilePickerResult? result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx', 'jpg', 'png', 'jpeg'],
         withData: true,
