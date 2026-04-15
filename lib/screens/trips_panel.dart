@@ -35,7 +35,7 @@ class _TripsPanelState extends State<TripsPanel> {
     if (picked != null && picked != selectedDate) {
       setState(() {
         selectedDate = picked;
-        selectedTripDoc = null; // reset trip view
+        selectedTripDoc = null;
       });
     }
   }
@@ -99,7 +99,6 @@ class _TripsPanelState extends State<TripsPanel> {
                             );
                           }).toList();
 
-                          // Garantir que a seleção atual existe
                           if (selectedDriverId != null && !docs.any((d) => d.id == selectedDriverId)) {
                             selectedDriverId = null;
                           }
@@ -110,7 +109,6 @@ class _TripsPanelState extends State<TripsPanel> {
                               hint: const Text('Selecionar Motorista'),
                               value: selectedDriverId,
                               items: driverItems,
-                              // Disable dropdown if explicitly passed driver
                               onChanged: widget.driverId != null ? null : (val) {
                                 setState(() {
                                   selectedDriverId = val;
@@ -200,19 +198,25 @@ class _TripsPanelState extends State<TripsPanel> {
 
         return ListView.separated(
           itemCount: docs.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
+          separatorBuilder: (context, i) => const Divider(height: 1),
           itemBuilder: (context, index) {
             final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>;
             final startKms = data['startKms'] ?? 0.0;
             final endKms = data['endKms'];
             final startTime = (data['startTime'] as Timestamp?)?.toDate();
+            final actualStartTime = (data['actualStartTime'] as Timestamp?)?.toDate();
             final endTime = (data['endTime'] as Timestamp?)?.toDate();
             final status = data['status'] ?? 'active';
-            
+
             final totalKms = endKms != null ? (endKms - startKms).toStringAsFixed(1) : '---';
             final startTimeStr = startTime != null ? DateFormat('HH:mm').format(startTime) : '--:--';
             final endTimeStr = endTime != null ? DateFormat('HH:mm').format(endTime) : '--:--';
+
+            // Detectar se a hora foi modificada pelo motorista (diferença > 1 min)
+            final wasEdited = actualStartTime != null &&
+                startTime != null &&
+                actualStartTime.difference(startTime).abs().inMinutes >= 1;
 
             final isSelected = selectedTripDoc?.id == doc.id;
 
@@ -225,7 +229,22 @@ class _TripsPanelState extends State<TripsPanel> {
                 color: status == 'completed' ? Colors.green : Colors.blue,
                 size: 32,
               ),
-              title: Text('$startTimeStr - $endTimeStr', style: const TextStyle(fontWeight: FontWeight.bold)),
+              title: Row(
+                children: [
+                  Text(
+                    '$startTimeStr - $endTimeStr',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  if (wasEdited) ...[
+                    const SizedBox(width: 6),
+                    Tooltip(
+                      message:
+                          'Hora ajustada pelo motorista\nHora real: ${DateFormat('HH:mm').format(actualStartTime)}',
+                      child: const Icon(Icons.edit_calendar, size: 14, color: Colors.orange),
+                    ),
+                  ],
+                ],
+              ),
               subtitle: Text('$totalKms km percorridos'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
@@ -263,6 +282,7 @@ class _TripsPanelState extends State<TripsPanel> {
     final startKms = data['startKms'] ?? 0.0;
     final endKms = data['endKms'];
     final startTime = (data['startTime'] as Timestamp?)?.toDate();
+    final actualStartTime = (data['actualStartTime'] as Timestamp?)?.toDate();
     final endTime = (data['endTime'] as Timestamp?)?.toDate();
     final startLoc = data['startLocation'] as GeoPoint?;
     final endLoc = data['endLocation'] as GeoPoint?;
@@ -271,7 +291,7 @@ class _TripsPanelState extends State<TripsPanel> {
     final duration = startTime != null
         ? (endTime ?? DateTime.now()).difference(startTime)
         : Duration.zero;
-        
+
     final h = duration.inHours;
     final m = duration.inMinutes.remainder(60);
     final durationStr = '${h}h ${m}m';
@@ -295,34 +315,212 @@ class _TripsPanelState extends State<TripsPanel> {
                   children: [
                     Text(
                       'Resumo da Viagem',
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blueGrey.shade800),
+                      style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueGrey.shade800),
                     ),
                     if (startLoc != null && endLoc != null)
                       ElevatedButton.icon(
                         onPressed: () => _openMapRoute(startLoc, endLoc),
                         icon: const Icon(Icons.map),
                         label: const Text('Ver Trajeto'),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey, foregroundColor: Colors.white),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blueGrey,
+                            foregroundColor: Colors.white),
                       ),
                   ],
                 ),
                 const SizedBox(height: 24),
                 Row(
                   children: [
-                    _buildMetricCard(Icons.directions_car, 'Veículos', '$tractor | $trailer'),
+                    _buildMetricCard(
+                        Icons.directions_car, 'Veículos', '$tractor | $trailer'),
                     const SizedBox(width: 16),
-                    _buildMetricCard(Icons.speed, 'Quilómetros', '$startKms a ${endKms ?? "..."} (Total: $totalKms km)'),
+                    _buildMetricCard(Icons.speed, 'Quilómetros',
+                        '$startKms a ${endKms ?? "..."} (Total: $totalKms km)'),
                     const SizedBox(width: 16),
                     _buildMetricCard(Icons.timer, 'Duração', durationStr),
                   ],
                 ),
+                const SizedBox(height: 16),
+                // ── Cartão de Horas de Início ───────────────────────────
+                _buildStartTimeCard(startTime, actualStartTime),
               ],
             ),
           ),
-          
+
           // TIMELINE DE EVENTOS
           Expanded(
             child: _buildTimeline(startTime, endTime),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Cartão que mostra a hora escolhida pelo motorista e a hora real do clique.
+  Widget _buildStartTimeCard(DateTime? startTime, DateTime? actualStartTime) {
+    final fmt = DateFormat('HH:mm:ss');
+    final fmtFull = DateFormat('dd/MM/yyyy HH:mm:ss');
+
+    final chosenStr = startTime != null ? fmt.format(startTime) : '--:--';
+    final actualStr = actualStartTime != null ? fmt.format(actualStartTime) : null;
+
+    String? diffStr;
+    bool wasEdited = false;
+    if (startTime != null && actualStartTime != null) {
+      final diff = actualStartTime.difference(startTime).abs();
+      if (diff.inMinutes >= 1) {
+        wasEdited = true;
+        final dh = diff.inHours;
+        final dm = diff.inMinutes.remainder(60);
+        diffStr = dh > 0 ? '${dh}h ${dm}m de diferença' : '${dm}m de diferença';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: wasEdited ? Colors.orange.shade50 : Colors.green.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: wasEdited ? Colors.orange.shade200 : Colors.green.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Título do cartão
+          Row(
+            children: [
+              Icon(
+                wasEdited ? Icons.edit_calendar : Icons.login,
+                color: wasEdited ? Colors.orange.shade700 : Colors.green.shade700,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                wasEdited
+                    ? 'Hora de Início (ajustada pelo motorista)'
+                    : 'Hora de Início',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: wasEdited ? Colors.orange.shade800 : Colors.green.shade800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Hora declarada (escolhida pelo motorista)
+          Row(
+            children: [
+              const Icon(Icons.access_time, size: 16, color: Colors.blueGrey),
+              const SizedBox(width: 6),
+              const Text('Hora declarada:',
+                  style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
+              const SizedBox(width: 6),
+              Text(
+                chosenStr,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              if (startTime != null) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '(${fmtFull.format(startTime)})',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                ),
+              ],
+            ],
+          ),
+
+          if (actualStr != null) ...[
+            const SizedBox(height: 8),
+            // Hora real do clique
+            Row(
+              children: [
+                const Icon(Icons.gps_fixed, size: 16, color: Colors.blueGrey),
+                const SizedBox(width: 6),
+                const Text('Hora real do clique:',
+                    style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
+                const SizedBox(width: 6),
+                Text(
+                  actualStr,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: wasEdited
+                        ? Colors.orange.shade800
+                        : Colors.green.shade700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _buildSourceBadge(),
+              ],
+            ),
+            if (diffStr != null) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  const SizedBox(width: 22),
+                  Icon(Icons.info_outline, size: 13, color: Colors.orange.shade600),
+                  const SizedBox(width: 4),
+                  Text(
+                    diffStr,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.orange.shade700,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ] else ...[
+            // Trips antigos sem actualStartTime
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const SizedBox(width: 22),
+                Icon(Icons.history, size: 13, color: Colors.grey.shade500),
+                const SizedBox(width: 4),
+                Text(
+                  'Hora real não disponível (viagem anterior à atualização)',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade500,
+                      fontStyle: FontStyle.italic),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Badge "Hora verificada" — indica que o campo actualStartTime existe e foi gravado.
+  Widget _buildSourceBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade100,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.verified, size: 12, color: Colors.blue.shade700),
+          const SizedBox(width: 4),
+          Text(
+            'Hora verificada',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.blue.shade700,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -348,7 +546,8 @@ class _TripsPanelState extends State<TripsPanel> {
                 children: [
                   Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
                   const SizedBox(height: 4),
-                  Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text(value,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ],
               ),
             ),
@@ -362,23 +561,23 @@ class _TripsPanelState extends State<TripsPanel> {
     if (start == null || selectedDriverId == null) {
       return const Center(child: Text('Data de início inválida.'));
     }
-    
+
     final filterEnd = end ?? DateTime.now();
 
     return FutureBuilder(
       future: Future.wait([
-        // Tarefas
-        FirebaseFirestore.instance.collection('tasks')
-          .where('driverId', isEqualTo: selectedDriverId)
-          .get(),
-        // Abastecimentos
-        FirebaseFirestore.instance.collection('refuels')
-          .where('driverId', isEqualTo: selectedDriverId)
-          .get(),
-        // Incidentes
-        FirebaseFirestore.instance.collection('incidents')
-          .where('driverId', isEqualTo: selectedDriverId)
-          .get(),
+        FirebaseFirestore.instance
+            .collection('tasks')
+            .where('driverId', isEqualTo: selectedDriverId)
+            .get(),
+        FirebaseFirestore.instance
+            .collection('refuels')
+            .where('driverId', isEqualTo: selectedDriverId)
+            .get(),
+        FirebaseFirestore.instance
+            .collection('incidents')
+            .where('driverId', isEqualTo: selectedDriverId)
+            .get(),
       ]),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -391,16 +590,15 @@ class _TripsPanelState extends State<TripsPanel> {
         final results = snapshot.data as List<QuerySnapshot>;
         final allEvents = <Map<String, dynamic>>[];
 
-        // Process tarefas
         for (var doc in results[0].docs) {
           final data = doc.data() as Map<String, dynamic>;
-          final ts = (data['completedAt'] as Timestamp?)?.toDate() ?? (data['timestamp'] as Timestamp?)?.toDate();
+          final ts = (data['completedAt'] as Timestamp?)?.toDate() ??
+              (data['timestamp'] as Timestamp?)?.toDate();
           if (ts != null && ts.isAfter(start) && ts.isBefore(filterEnd)) {
             allEvents.add({'type': 'task', 'data': data, 'time': ts});
           }
         }
 
-        // Process abastecimentos
         for (var doc in results[1].docs) {
           final data = doc.data() as Map<String, dynamic>;
           final ts = (data['timestamp'] as Timestamp?)?.toDate();
@@ -409,7 +607,6 @@ class _TripsPanelState extends State<TripsPanel> {
           }
         }
 
-        // Process incidentes
         for (var doc in results[2].docs) {
           final data = doc.data() as Map<String, dynamic>;
           final ts = (data['timestamp'] as Timestamp?)?.toDate();
@@ -418,11 +615,15 @@ class _TripsPanelState extends State<TripsPanel> {
           }
         }
 
-        allEvents.sort((a, b) => (a['time'] as DateTime).compareTo(b['time'] as DateTime));
+        allEvents.sort(
+            (a, b) => (a['time'] as DateTime).compareTo(b['time'] as DateTime));
 
         if (allEvents.isEmpty) {
           return const Center(
-            child: Text('Nenhum evento registado durante esta viagem.', style: TextStyle(color: Colors.grey, fontSize: 16)),
+            child: Text(
+              'Nenhum evento registado durante esta viagem.',
+              style: TextStyle(color: Colors.grey, fontSize: 16),
+            ),
           );
         }
 
@@ -434,7 +635,6 @@ class _TripsPanelState extends State<TripsPanel> {
             final type = event['type'];
             final data = event['data'] as Map<String, dynamic>;
             final time = event['time'] as DateTime;
-            
             return _buildTimelineItem(type, data, time);
           },
         );
@@ -442,7 +642,8 @@ class _TripsPanelState extends State<TripsPanel> {
     );
   }
 
-  Widget _buildTimelineItem(String type, Map<String, dynamic> data, DateTime time) {
+  Widget _buildTimelineItem(
+      String type, Map<String, dynamic> data, DateTime time) {
     IconData icon;
     Color color;
     String title;
@@ -452,7 +653,9 @@ class _TripsPanelState extends State<TripsPanel> {
 
     switch (type) {
       case 'task':
-        icon = data['status'] == 'completed' ? Icons.check_circle : Icons.schedule;
+        icon = data['status'] == 'completed'
+            ? Icons.check_circle
+            : Icons.schedule;
         color = data['status'] == 'completed' ? Colors.green : Colors.orange;
         title = data['title'] ?? 'Tarefa';
         subtitle = data['status'] == 'completed' ? 'Concluída' : 'Atribuída';
@@ -485,7 +688,10 @@ class _TripsPanelState extends State<TripsPanel> {
             width: 60,
             child: Text(
               timeStr,
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey.shade600, fontSize: 16),
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blueGrey.shade600,
+                  fontSize: 16),
             ),
           ),
           Column(
@@ -498,7 +704,6 @@ class _TripsPanelState extends State<TripsPanel> {
                 ),
                 child: Icon(icon, color: color, size: 24),
               ),
-              // Simular a linha
               Container(
                 margin: const EdgeInsets.only(top: 8),
                 width: 2,
@@ -514,14 +719,19 @@ class _TripsPanelState extends State<TripsPanel> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                boxShadow: const [
+                  BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text(title,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 4),
-                  Text(subtitle, style: TextStyle(color: Colors.grey.shade600)),
+                  Text(subtitle,
+                      style: TextStyle(color: Colors.grey.shade600)),
                 ],
               ),
             ),
@@ -532,14 +742,16 @@ class _TripsPanelState extends State<TripsPanel> {
   }
 
   Future<void> _openMapRoute(GeoPoint startLoc, GeoPoint endLoc) async {
-    final url = Uri.parse('https://www.google.com/maps/dir/?api=1&origin=${startLoc.latitude},${startLoc.longitude}&destination=${endLoc.latitude},${endLoc.longitude}');
-    
+    final url = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&origin=${startLoc.latitude},${startLoc.longitude}&destination=${endLoc.latitude},${endLoc.longitude}');
+
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Não foi possível abrir o Google Maps.')),
+        const SnackBar(
+            content: Text('Não foi possível abrir o Google Maps.')),
       );
     }
   }
