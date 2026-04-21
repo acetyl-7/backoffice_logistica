@@ -577,7 +577,8 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
 
           final activeDocs = allDocs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
-            return data['status'] != 'completed';
+            final status = data['status']?.toString() ?? 'pending';
+            return status == 'pending' || status == 'in_progress';
           }).toList();
 
           final pastDocs = allDocs.where((doc) {

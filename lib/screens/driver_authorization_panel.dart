@@ -35,7 +35,7 @@ class _DriverAuthorizationPanelState extends State<DriverAuthorizationPanel> {
     final String initialEmail = (emailVal.trim().isEmpty) ? 'Aguardando Sincronização' : emailVal;
 
     _nomeController =
-        TextEditingController(text: data['name']?.toString() ?? data['nome']?.toString() ?? '');
+        TextEditingController(text: data['nickname']?.toString() ?? '');
     _emailController =
         TextEditingController(text: initialEmail);
     _telefoneController =
@@ -54,7 +54,7 @@ class _DriverAuthorizationPanelState extends State<DriverAuthorizationPanel> {
       final emailVal = data['email']?.toString() ?? '';
       final String initialEmail = (emailVal.trim().isEmpty) ? 'Aguardando Sincronização' : emailVal;
 
-      _nomeController.text = data['name']?.toString() ?? data['nome']?.toString() ?? '';
+      _nomeController.text = data['nickname']?.toString() ?? '';
       _emailController.text = initialEmail;
       _telefoneController.text = data['phone']?.toString() ?? data['telefone']?.toString() ?? '';
       _matriculaController.text = data['matricula']?.toString() ?? '';
@@ -100,8 +100,7 @@ class _DriverAuthorizationPanelState extends State<DriverAuthorizationPanel> {
       final emailToSave = _emailController.text.trim();
 
       await docRef.update({
-        'name': _nomeController.text.trim(),
-        'nome': _nomeController.text.trim(), // Para efeitos de legibilidade e sistemas antigos
+        'nickname': _nomeController.text.trim(),
         'email': emailToSave == 'Aguardando Sincronização' ? '' : emailToSave,
         'phone': _telefoneController.text.trim(),
         'telefone': _telefoneController.text.trim(), // Para sistemas antigos
@@ -230,7 +229,7 @@ class _DriverAuthorizationPanelState extends State<DriverAuthorizationPanel> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.driverData['nome']?.toString() ?? 'Sem Nome',
+                          widget.driverData['nickname']?.toString() ?? 'Sem Alcunha',
                           style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
@@ -262,7 +261,7 @@ class _DriverAuthorizationPanelState extends State<DriverAuthorizationPanel> {
                         children: [
                           Expanded(
                             child: _buildField(
-                              label: 'Nome Completo',
+                              label: 'Alcunha',
                               controller: _nomeController,
                               icon: Icons.person_outline,
                               validator: (v) => (v == null || v.trim().isEmpty)

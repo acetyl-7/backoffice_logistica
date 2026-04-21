@@ -25,6 +25,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String currentView = 'menu';
   int _globalSelectedIndex = 0;
 
+  late Stream<QuerySnapshot> _usersStream;
+  final TextEditingController _pendingSearchController = TextEditingController();
+  final TextEditingController _authorizedSearchController = TextEditingController();
+  String _pendingSearchQuery = '';
+  String _authorizedSearchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _usersStream = FirebaseFirestore.instance.collection('users').snapshots();
+  }
+
+  @override
+  void dispose() {
+    _pendingSearchController.dispose();
+    _authorizedSearchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _markDriverMessagesAsRead(String driverId) async {
     try {
       final querySnapshot = await FirebaseFirestore.instance
@@ -141,9 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 // Lista com duas secções
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('users')
-                        .snapshots(),
+                    stream: _usersStream,
                     builder: (context, snapshot) {
                       if (snapshot.hasError) {
                         return const Center(
@@ -158,15 +175,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       final allDocs = snapshot.data?.docs ?? [];
 
                       // Separar em autorizados e por autorizar
-                      // null ou false → Por Autorizar
                       final pending = allDocs.where((doc) {
                         final data = doc.data() as Map<String, dynamic>;
-                        return data['isAuthorized'] != true;
+                        if (data['isAuthorized'] != false) return false;
+
+                        final String nickname = (data['nickname']?.toString() ?? '').trim().toLowerCase();
+                        if (nickname.isEmpty) return false;
+
+                        if (_pendingSearchQuery.isNotEmpty) {
+                          if (!nickname.contains(_pendingSearchQuery)) {
+                            return false;
+                          }
+                        }
+                        return true;
                       }).toList();
 
                       final authorized = allDocs.where((doc) {
                         final data = doc.data() as Map<String, dynamic>;
-                        return data['isAuthorized'] == true;
+                        if (data['isAuthorized'] != true) return false;
+
+                        final String nickname = (data['nickname']?.toString() ?? '').trim().toLowerCase();
+                        if (nickname.isEmpty) return false;
+
+                        if (_authorizedSearchQuery.isNotEmpty) {
+                          if (!nickname.contains(_authorizedSearchQuery)) {
+                            return false;
+                          }
+                        }
+                        return true;
                       }).toList();
 
                       if (allDocs.isEmpty) {
@@ -182,7 +218,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         );
                       }
 
-                      return ListView(
+                      return Column(
                         children: [
                           // ── SECÇÃO: POR AUTORIZAR ──
                           _buildSectionHeader(
@@ -192,41 +228,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             badgeColor: Colors.amber.shade600,
                             icon: Icons.pending_actions,
                           ),
-                          ...pending.map((doc) {
-                            final data =
-                                doc.data() as Map<String, dynamic>;
-                            final nome = data['name']?.toString() ?? data['nome']?.toString() ??
-                                'Sem Nome';
-                            final photoUrl =
-                                data['photoUrl']?.toString();
-                            final driverId =
-                                data['uid']?.toString() ?? doc.id;
-                            final isSelected =
-                                selectedDriverId == driverId;
-
-                            return _buildPendingDriverTile(
-                              driverId: driverId,
-                              nome: nome,
-                              photoUrl: photoUrl,
-                              data: data,
-                              isSelected: isSelected,
-                            );
-                          }),
-
-                          if (pending.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                              child: Text(
-                                'Sem motoristas pendentes.',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade500,
-                                    fontStyle: FontStyle.italic),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            child: TextField(
+                              controller: _pendingSearchController,
+                              decoration: InputDecoration(
+                                hintText: 'Pesquisar pendentes...',
+                                prefixIcon: const Icon(Icons.search, size: 20),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                               ),
+                              onChanged: (val) {
+                                  setState(() {
+                                    _pendingSearchQuery = val.toLowerCase();
+                                  });
+                              },
                             ),
+                          ),
+                          Expanded(
+                            child: ListView(
+                              padding: EdgeInsets.zero,
+                              children: [
+                                ...pending.map((doc) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  final String? tNickname = data['nickname']?.toString();
+                                  final nome = (tNickname != null && tNickname.trim().isNotEmpty) ? tNickname : 'Sem Alcunha';
+                                  final photoUrl = data['photoUrl']?.toString();
+                                  final driverId = data['uid']?.toString() ?? doc.id;
+                                  final isSelected = selectedDriverId == driverId;
 
-                          const SizedBox(height: 8),
+                                  return _buildPendingDriverTile(
+                                    driverId: driverId,
+                                    nome: nome,
+                                    photoUrl: photoUrl,
+                                    data: data,
+                                    isSelected: isSelected,
+                                  );
+                                }),
+                                if (pending.isEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    child: Text(
+                                      'Nenhum motorista correspondente.',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade500,
+                                          fontStyle: FontStyle.italic),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          
+                          Container(height: 1, color: Colors.grey.shade300),
 
                           // ── SECÇÃO: AUTORIZADOS ──
                           _buildSectionHeader(
@@ -236,39 +290,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             badgeColor: Colors.green.shade600,
                             icon: Icons.verified_user,
                           ),
-                          ...authorized.map((doc) {
-                            final data =
-                                doc.data() as Map<String, dynamic>;
-                            final nome = data['name']?.toString() ?? data['nome']?.toString() ??
-                                'Sem Nome';
-                            final photoUrl =
-                                data['photoUrl']?.toString();
-                            final driverId =
-                                data['uid']?.toString() ?? doc.id;
-                            final isSelected =
-                                selectedDriverId == driverId;
-
-                            return _buildAuthorizedDriverTile(
-                              driverId: driverId,
-                              nome: nome,
-                              photoUrl: photoUrl,
-                              data: data,
-                              isSelected: isSelected,
-                            );
-                          }),
-
-                          if (authorized.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                              child: Text(
-                                'Sem motoristas autorizados.',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade500,
-                                    fontStyle: FontStyle.italic),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            child: TextField(
+                              controller: _authorizedSearchController,
+                              decoration: InputDecoration(
+                                hintText: 'Pesquisar autorizados...',
+                                prefixIcon: const Icon(Icons.search, size: 20),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                               ),
+                              onChanged: (val) {
+                                  setState(() {
+                                    _authorizedSearchQuery = val.toLowerCase();
+                                  });
+                              },
                             ),
+                          ),
+                          Expanded(
+                            child: ListView(
+                              padding: EdgeInsets.zero,
+                              children: [
+                                ...authorized.map((doc) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  final String? tNickname = data['nickname']?.toString();
+                                  final nome = (tNickname != null && tNickname.trim().isNotEmpty) ? tNickname : 'Sem Alcunha';
+                                  final photoUrl = data['photoUrl']?.toString();
+                                  final driverId = data['uid']?.toString() ?? doc.id;
+                                  final isSelected = selectedDriverId == driverId;
+
+                                  return _buildAuthorizedDriverTile(
+                                    driverId: driverId,
+                                    nome: nome,
+                                    photoUrl: photoUrl,
+                                    data: data,
+                                    isSelected: isSelected,
+                                  );
+                                }),
+                                if (authorized.isEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    child: Text(
+                                      'Nenhum motorista correspondente.',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade500,
+                                          fontStyle: FontStyle.italic),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ],
                       );
                     },
@@ -522,8 +594,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           onBack: () => setState(() => currentView = 'menu'),
         );
       case 'tasks':
+        final realDriverId = selectedDriverData?['driverId']?.toString() ?? '';
+        final idToPass = realDriverId.isNotEmpty ? realDriverId : selectedDriverId!;
         return TasksPanel(
-          driverId: selectedDriverId!,
+          driverId: idToPass,
           driverName: selectedDriverName ?? 'Motorista',
           onBack: () => setState(() => currentView = 'menu'),
         );
