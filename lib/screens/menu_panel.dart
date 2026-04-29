@@ -154,6 +154,53 @@ class MenuPanel extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
+              // ── Fleet ID Badge (tempo real) ──
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .where('uid', isEqualTo: driverId)
+                    .limit(1)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  String? fleetId;
+                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                    final data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+                    fleetId = data['driverId']?.toString();
+                  }
+                  final hasFleetId = fleetId != null && fleetId.isNotEmpty;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: hasFleetId ? Colors.indigo.shade50 : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: hasFleetId ? Colors.indigo.shade200 : Colors.grey.shade300,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.tag,
+                          size: 15,
+                          color: hasFleetId ? Colors.indigo.shade600 : Colors.grey.shade500,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          hasFleetId ? 'Fleet ID: $fleetId' : 'Fleet ID: Não sincronizado',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: hasFleetId ? Colors.indigo.shade700 : Colors.grey.shade500,
+                            fontStyle: hasFleetId ? FontStyle.normal : FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
               Text(
                 'Painel de Controlo',
                 style: TextStyle(

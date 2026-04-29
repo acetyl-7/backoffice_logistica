@@ -263,6 +263,24 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
     operationTypeOtherController.dispose();
   }
 
+  String _translateStatus(String status) {
+    switch (status) {
+      case 'pending':
+      case 'por_enviar': return 'Pendente';
+      case 'in_progress':
+      case 'iniciada': return 'Em Curso';
+      case 'completed':
+      case 'terminada': return 'Concluída';
+      case 'enviada': return 'Enviada';
+      case 'recebida': return 'Recebida';
+      case 'vista': return 'Vista';
+      case 'iniciada': return 'Iniciada';
+      case 'terminada': return 'Terminada';
+      case 'anulada': return 'Anulada';
+      default: return status;
+    }
+  }
+
   Timestamp? _getTimestamp(dynamic value) {
     if (value is Timestamp) return value;
     return null;
@@ -277,9 +295,12 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
     showDialog(
       context: context,
       builder: (context) {
-        final title = data['title']?.toString() ?? 'Sem título';
+        final title = data['title']?.toString() ?? '';
+        final taskTypeName = data['taskTypeName']?.toString() ?? '';
+        final displayTitle = title.isNotEmpty ? title : (taskTypeName.isNotEmpty ? taskTypeName : 'Sem título');
         final description = data['description']?.toString() ?? 'Sem descrição';
         final timestamp = _getTimestamp(data['timestamp']);
+        final taskDate = _getTimestamp(data['date']);
         final startedAt = _getTimestamp(data['startedAt']);
         final startLocation = _getGeoPoint(data['startLocation']);
         final completedAt = _getTimestamp(data['completedAt']);
@@ -299,10 +320,17 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
         final tractorPlate = data['tractorPlate']?.toString();
         final trailerPlate = data['trailerPlate']?.toString();
 
+        // Campos SQL
+        final city = data['city']?.toString();
+        final address = data['address']?.toString();
+        final country = data['country']?.toString();
+        final ref = data['ref']?.toString();
+        final obs = data['obs']?.toString();
+
         final dateFormatter = DateFormat('dd/MM/yyyy HH:mm:ss');
 
         return AlertDialog(
-          title: Text(title),
+          title: Text(displayTitle),
           content: SizedBox(
             width: 450,
             child: SingleChildScrollView(
@@ -313,7 +341,13 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
                 const Text('Descrição:', style: TextStyle(fontWeight: FontWeight.bold)),
                 Text(description),
                 const SizedBox(height: 16),
-                
+
+                // Data da tarefa SQL
+                if (taskDate != null) ...[
+                  const Text('Data da Tarefa:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(dateFormatter.format(taskDate.toDate())),
+                  const SizedBox(height: 8),
+                ],
                 if (freightId != null && freightId.isNotEmpty) ...[
                   const Text('ID do Frete:', style: TextStyle(fontWeight: FontWeight.bold)),
                   Text(freightId),
@@ -352,8 +386,30 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
                   ].join(' | ')),
                   const SizedBox(height: 8),
                 ],
+
+                // Campos SQL
+                if (city != null && city.isNotEmpty) ...[
+                  const Text('Cidade:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('$city${country != null && country.isNotEmpty ? ", $country" : ""}'),
+                  const SizedBox(height: 8),
+                ],
+                if (address != null && address.isNotEmpty) ...[
+                  const Text('Morada:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(address),
+                  const SizedBox(height: 8),
+                ],
+                if (ref != null && ref.isNotEmpty) ...[
+                  const Text('Referência:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(ref),
+                  const SizedBox(height: 8),
+                ],
+                if (obs != null && obs.isNotEmpty) ...[
+                  const Text('Observações:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(obs),
+                  const SizedBox(height: 8),
+                ],
                 
-                if (freightId != null || operationLocation != null || operationType != null || tractorPlate != null) ...[
+                if (freightId != null || operationLocation != null || operationType != null || tractorPlate != null || city != null) ...[
                   const Divider(),
                   const SizedBox(height: 8),
                 ],
@@ -394,7 +450,7 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
                   const SizedBox(height: 16),
                 ],
 
-                if (status == 'completed') ...[
+                if (status == 'completed' || status == 'terminada') ...[
                   const Divider(),
                   const SizedBox(height: 8),
                   const Text('Comprovativo de Entrega', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.teal)),
@@ -578,12 +634,12 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
           final activeDocs = allDocs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
             final status = data['status']?.toString() ?? 'pending';
-            return status == 'pending' || status == 'in_progress';
+            return status == 'pending' || status == 'in_progress' || status == 'por_enviar' || status == 'enviada' || status == 'recebida' || status == 'vista' || status == 'iniciada';
           }).toList();
 
           final pastDocs = allDocs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
-            return data['status'] == 'completed';
+            return data['status'] == 'completed' || data['status'] == 'terminada' || data['status'] == 'anulada';
           }).toList();
 
           return TabBarView(
@@ -616,16 +672,21 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
           final doc = docs[index];
           final data = doc.data() as Map<String, dynamic>;
           
-          final title = data['title'] ?? 'Sem título';
-          final status = data['status'] ?? 'pending';
+          final rawTitle = data['title']?.toString() ?? '';
+          final taskTypeName = data['taskTypeName']?.toString() ?? '';
+          final title = rawTitle.isNotEmpty ? rawTitle : (taskTypeName.isNotEmpty ? taskTypeName : 'Sem título');
+          final status = data['status']?.toString() ?? 'pending';
           
           IconData iconData;
           Color iconColor;
           
-          if (status == 'completed') {
+          if (status == 'completed' || status == 'terminada') {
             iconData = Icons.check_circle;
             iconColor = Colors.green;
-          } else if (status == 'in_progress') {
+          } else if (status == 'anulada') {
+            iconData = Icons.cancel;
+            iconColor = Colors.red;
+          } else if (status == 'in_progress' || status == 'iniciada') {
             iconData = Icons.play_circle_fill;
             iconColor = Colors.blue;
           } else {
@@ -639,7 +700,7 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
             child: ListTile(
               leading: Icon(iconData, color: iconColor, size: 36),
               title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text('Estado: $status'),
+              subtitle: Text('Estado: ${_translateStatus(status)}'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showTaskDetails(data),
             ),
@@ -696,16 +757,21 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
         }
       }
 
-      final title = data['title'] ?? 'Sem título';
-      final status = data['status'] ?? 'pending';
+      final rawTitle = data['title']?.toString() ?? '';
+      final taskTypeName = data['taskTypeName']?.toString() ?? '';
+      final title = rawTitle.isNotEmpty ? rawTitle : (taskTypeName.isNotEmpty ? taskTypeName : 'Sem título');
+      final status = data['status']?.toString() ?? 'pending';
       
       IconData iconData;
       Color iconColor;
       
-      if (status == 'completed') {
+      if (status == 'completed' || status == 'terminada') {
         iconData = Icons.check_circle;
         iconColor = Colors.green;
-      } else if (status == 'in_progress') {
+      } else if (status == 'anulada') {
+        iconData = Icons.cancel;
+        iconColor = Colors.red;
+      } else if (status == 'in_progress' || status == 'iniciada') {
         iconData = Icons.play_circle_fill;
         iconColor = Colors.blue;
       } else {
@@ -722,7 +788,7 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
             child: ListTile(
               leading: Icon(iconData, color: iconColor, size: 36),
               title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text('Estado: $status'),
+              subtitle: Text('Estado: ${_translateStatus(status)}'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showTaskDetails(data),
             ),
