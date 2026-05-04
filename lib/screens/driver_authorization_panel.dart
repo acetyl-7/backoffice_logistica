@@ -245,16 +245,15 @@ class _DriverAuthorizationPanelState extends State<DriverAuthorizationPanel> {
                           ),
                           const SizedBox(height: 8),
                           // ── Fleet ID Badge (tempo real) ──
-                          StreamBuilder<QuerySnapshot>(
+                          StreamBuilder<DocumentSnapshot>(
                             stream: FirebaseFirestore.instance
                                 .collection('users')
-                                .where('uid', isEqualTo: widget.driverData['uid']?.toString() ?? widget.driverId)
-                                .limit(1)
+                                .doc(widget.driverData['uid']?.toString() ?? widget.driverId)
                                 .snapshots(),
                             builder: (context, snapshot) {
                               String? fleetId;
-                              if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                                final liveData = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+                              if (snapshot.hasData && snapshot.data!.exists) {
+                                final liveData = snapshot.data!.data() as Map<String, dynamic>;
                                 fleetId = liveData['driverId']?.toString();
                               }
                               fleetId ??= widget.driverData['driverId']?.toString();

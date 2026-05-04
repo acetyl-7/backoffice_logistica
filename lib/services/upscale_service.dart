@@ -131,38 +131,48 @@ class UpscaleService {
       }
 
       // 4. Get images from tasks (operation images & guia images)
-      final tasksSnapshot = await FirebaseFirestore.instance
-          .collection('tasks')
-          .where('driverId', isEqualTo: driverId)
-          .get();
+      // Note: Tasks from SQL use the SQL ID (which is stored as 'driverId' or 'sqlId' in the user doc)
+      String? sqlIdForTasks;
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(driverId).get();
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        sqlIdForTasks = userData?['driverId']?.toString() ?? userData?['sqlId']?.toString();
+      }
 
-      for (var doc in tasksSnapshot.docs) {
-        final data = doc.data();
+      if (sqlIdForTasks != null && sqlIdForTasks.isNotEmpty) {
+        final tasksSnapshot = await FirebaseFirestore.instance
+            .collection('tasks')
+            .where('driverId', isEqualTo: sqlIdForTasks)
+            .get();
 
-        DateTime? ts;
-        final rawTs = data['completedAt'] ?? data['timestamp'];
-        if (rawTs is Timestamp) {
-          ts = rawTs.toDate();
-        }
+        for (var doc in tasksSnapshot.docs) {
+          final data = doc.data();
 
-        final operationImageUrl = data['operationImageUrl'];
-        if (operationImageUrl != null && operationImageUrl.toString().isNotEmpty) {
-          tempImages.add(NormalImage(
-            url: operationImageUrl.toString(),
-            timestamp: ts,
-            source: 'task_operation',
-            docId: doc.id,
-          ));
-        }
+          DateTime? ts;
+          final rawTs = data['completedAt'] ?? data['timestamp'];
+          if (rawTs is Timestamp) {
+            ts = rawTs.toDate();
+          }
 
-        final guiaImageUrl = data['guiaImageUrl'];
-        if (guiaImageUrl != null && guiaImageUrl.toString().isNotEmpty) {
-          tempImages.add(NormalImage(
-            url: guiaImageUrl.toString(),
-            timestamp: ts,
-            source: 'task_guia',
-            docId: doc.id,
-          ));
+          final operationImageUrl = data['operationImageUrl'];
+          if (operationImageUrl != null && operationImageUrl.toString().isNotEmpty) {
+            tempImages.add(NormalImage(
+              url: operationImageUrl.toString(),
+              timestamp: ts,
+              source: 'task_operation',
+              docId: doc.id,
+            ));
+          }
+
+          final guiaImageUrl = data['guiaImageUrl'];
+          if (guiaImageUrl != null && guiaImageUrl.toString().isNotEmpty) {
+            tempImages.add(NormalImage(
+              url: guiaImageUrl.toString(),
+              timestamp: ts,
+              source: 'task_guia',
+              docId: doc.id,
+            ));
+          }
         }
       }
 

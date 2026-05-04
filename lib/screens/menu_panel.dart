@@ -155,16 +155,15 @@ class MenuPanel extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               // ── Fleet ID Badge (tempo real) ──
-              StreamBuilder<QuerySnapshot>(
+              StreamBuilder<DocumentSnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('users')
-                    .where('uid', isEqualTo: driverId)
-                    .limit(1)
+                    .doc(driverId)
                     .snapshots(),
                 builder: (context, snapshot) {
                   String? fleetId;
-                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                    final data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+                  if (snapshot.hasData && snapshot.data!.exists) {
+                    final data = snapshot.data!.data() as Map<String, dynamic>;
                     fleetId = data['driverId']?.toString();
                   }
                   final hasFleetId = fleetId != null && fleetId.isNotEmpty;
