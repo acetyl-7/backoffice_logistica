@@ -22,8 +22,10 @@ class _TripsPanelState extends State<TripsPanel> {
 
   late Stream<QuerySnapshot> _usersStream;
 
-  // Monthly stats: month (1..12) -> List of tasks
+  // Monthly stats: month (1..12) -> List of tasks, refuels, incidents
   Map<int, List<Map<String, dynamic>>> _yearlyTasks = {};
+  Map<int, List<Map<String, dynamic>>> _yearlyRefuels = {};
+  Map<int, List<Map<String, dynamic>>> _yearlyIncidents = {};
   bool _isLoadingTasks = false;
 
   final List<String> _monthNames = [
@@ -68,38 +70,100 @@ class _TripsPanelState extends State<TripsPanel> {
     setState(() {
       _isLoadingTasks = true;
       _yearlyTasks.clear();
+      _yearlyRefuels.clear();
+      _yearlyIncidents.clear();
     });
 
     final startOfYear = DateTime(selectedYear, 1, 1);
     final endOfYear = DateTime(selectedYear + 1, 1, 1);
 
     try {
-      final snap = await FirebaseFirestore.instance
+      final tasksFuture = FirebaseFirestore.instance
           .collection('tasks')
           .where('driverId', isEqualTo: driverIdToFetch)
-          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYear))
-          .where('date', isLessThan: Timestamp.fromDate(endOfYear))
+          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYear))
+          .where('timestamp', isLessThan: Timestamp.fromDate(endOfYear))
           .get();
+
+      final refuelsFuture = FirebaseFirestore.instance
+          .collection('refuels')
+          .where('driverId', isEqualTo: selectedDriverId!)
+          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYear))
+          .where('timestamp', isLessThan: Timestamp.fromDate(endOfYear))
+          .get();
+
+      final incidentsFuture = FirebaseFirestore.instance
+          .collection('incidents')
+          .where('driverId', isEqualTo: selectedDriverId!)
+          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYear))
+          .where('timestamp', isLessThan: Timestamp.fromDate(endOfYear))
+          .get();
+
+      final results = await Future.wait([tasksFuture, refuelsFuture, incidentsFuture]);
+      final snapTasks = results[0];
+      final snapRefuels = results[1];
+      final snapIncidents = results[2];
 
       Map<int, List<Map<String, dynamic>>> tasksByMonth = {
         for (var i = 1; i <= 12; i++) i: []
       };
+      Map<int, List<Map<String, dynamic>>> refuelsByMonth = {
+        for (var i = 1; i <= 12; i++) i: []
+      };
+      Map<int, List<Map<String, dynamic>>> incidentsByMonth = {
+        for (var i = 1; i <= 12; i++) i: []
+      };
 
-      for (var doc in snap.docs) {
-        final data = doc.data();
-        final ts = data['date'] as Timestamp?;
+      for (var doc in snapTasks.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        // Fallback to 'date' if 'timestamp' is missing, but Firestore query guarantees 'timestamp' is present
+        // since we query by it. So 'timestamp' should exist.
+        final ts = (data['timestamp'] ?? data['date']) as Timestamp?;
         if (ts != null) {
           final dt = ts.toDate();
           if (tasksByMonth.containsKey(dt.month)) {
             data['id'] = doc.id;
             data['dt'] = dt;
-            tasksByMonth[dt.month]!.add(data);
+            
+            // The user requested only COMPLETED tasks!
+            final status = data['status']?.toString() ?? '';
+            if (status == 'completed' || status == 'terminada' || status == 'anulada') {
+              tasksByMonth[dt.month]!.add(data);
+            }
+          }
+        }
+      }
+
+      for (var doc in snapRefuels.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final ts = data['timestamp'] as Timestamp?;
+        if (ts != null) {
+          final dt = ts.toDate();
+          if (refuelsByMonth.containsKey(dt.month)) {
+            data['id'] = doc.id;
+            data['dt'] = dt;
+            refuelsByMonth[dt.month]!.add(data);
+          }
+        }
+      }
+
+      for (var doc in snapIncidents.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final ts = data['timestamp'] as Timestamp?;
+        if (ts != null) {
+          final dt = ts.toDate();
+          if (incidentsByMonth.containsKey(dt.month)) {
+            data['id'] = doc.id;
+            data['dt'] = dt;
+            incidentsByMonth[dt.month]!.add(data);
           }
         }
       }
 
       setState(() {
         _yearlyTasks = tasksByMonth;
+        _yearlyRefuels = refuelsByMonth;
+        _yearlyIncidents = incidentsByMonth;
         _isLoadingTasks = false;
       });
     } catch (e) {
@@ -113,6 +177,8 @@ class _TripsPanelState extends State<TripsPanel> {
   void _showMonthCalendar(int monthIndex) {
     final month = monthIndex + 1;
     final tasksForMonth = _yearlyTasks[month] ?? [];
+    final refuelsForMonth = _yearlyRefuels[month] ?? [];
+    final incidentsForMonth = _yearlyIncidents[month] ?? [];
 
     showDialog(
       context: context,
@@ -122,6 +188,8 @@ class _TripsPanelState extends State<TripsPanel> {
           month: month,
           monthName: _monthNames[monthIndex],
           tasks: tasksForMonth,
+          refuels: refuelsForMonth,
+          incidents: incidentsForMonth,
         );
       },
     );
@@ -354,7 +422,9 @@ class _TripsPanelState extends State<TripsPanel> {
                       final month = index + 1;
                       final monthName = _monthNames[index];
                       final taskCount = _yearlyTasks[month]?.length ?? 0;
-                      return _buildMonthCard(index, monthName, taskCount);
+                      final refuelCount = _yearlyRefuels[month]?.length ?? 0;
+                      final incidentCount = _yearlyIncidents[month]?.length ?? 0;
+                      return _buildMonthCard(index, monthName, taskCount, refuelCount, incidentCount);
                     },
                   ),
           ),
@@ -363,7 +433,7 @@ class _TripsPanelState extends State<TripsPanel> {
     );
   }
 
-  Widget _buildMonthCard(int monthIndex, String monthName, int taskCount) {
+  Widget _buildMonthCard(int monthIndex, String monthName, int taskCount, int refuelCount, int incidentCount) {
     return InkWell(
       onTap: () => _showMonthCalendar(monthIndex),
       borderRadius: BorderRadius.circular(16),
@@ -396,8 +466,8 @@ class _TripsPanelState extends State<TripsPanel> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                      _buildMetricRow(Icons.assignment, 'Tarefas', taskCount.toString(), Colors.green),
-                     _buildMetricRow(Icons.local_gas_station, 'Abast.', '0', Colors.orange),
-                     _buildMetricRow(Icons.warning, 'Incidentes', '0', Colors.red),
+                     _buildMetricRow(Icons.local_gas_station, 'Abast.', refuelCount.toString(), Colors.orange),
+                     _buildMetricRow(Icons.warning, 'Incidentes', incidentCount.toString(), Colors.red),
                   ],
                 ),
               ),
@@ -432,22 +502,40 @@ class _MonthCalendarDialog extends StatelessWidget {
   final int month;
   final String monthName;
   final List<Map<String, dynamic>> tasks;
+  final List<Map<String, dynamic>> refuels;
+  final List<Map<String, dynamic>> incidents;
 
   const _MonthCalendarDialog({
     required this.year,
     required this.month,
     required this.monthName,
     required this.tasks,
+    required this.refuels,
+    required this.incidents,
   });
 
   @override
   Widget build(BuildContext context) {
     // Collect active days
-    final Set<int> activeDays = {};
+    final Set<int> taskDays = {};
     for (var t in tasks) {
       if (t['dt'] != null) {
         final dt = t['dt'] as DateTime;
-        activeDays.add(dt.day);
+        taskDays.add(dt.day);
+      }
+    }
+    final Set<int> refuelDays = {};
+    for (var r in refuels) {
+      if (r['dt'] != null) {
+        final dt = r['dt'] as DateTime;
+        refuelDays.add(dt.day);
+      }
+    }
+    final Set<int> incidentDays = {};
+    for (var i in incidents) {
+      if (i['dt'] != null) {
+        final dt = i['dt'] as DateTime;
+        incidentDays.add(dt.day);
       }
     }
 
@@ -504,41 +592,85 @@ class _MonthCalendarDialog extends StatelessWidget {
                   return const SizedBox(); // Empty padding for first week
                 }
                 final day = index - weekdayStart + 2;
-                final hasTask = activeDays.contains(day);
+                final hasTask = taskDays.contains(day);
+                final hasRefuel = refuelDays.contains(day);
+                final hasIncident = incidentDays.contains(day);
+
+                final hasActivity = hasTask || hasRefuel || hasIncident;
+                
+                // Determine borders based on activities
+                Border border;
+                if (hasActivity) {
+                  List<Color> borderColors = [];
+                  if (hasTask) borderColors.add(Colors.green.shade400);
+                  if (hasRefuel) borderColors.add(Colors.orange.shade400);
+                  if (hasIncident) borderColors.add(Colors.red.shade400);
+                  
+                  // For simplicity, we just use the first activity color for border
+                  // Or we can use a multi-colored approach if needed, but a standard border will do
+                  Color primaryBorderColor = borderColors.first;
+                  border = Border.all(color: primaryBorderColor, width: 2);
+                } else {
+                  border = Border.all(color: Colors.grey.shade300, width: 1);
+                }
 
                 return Container(
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: hasTask ? Colors.green.shade50 : Colors.grey.shade50,
+                    color: hasActivity ? Colors.grey.shade100 : Colors.grey.shade50,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: hasTask ? Colors.green.shade400 : Colors.grey.shade300,
-                      width: hasTask ? 2 : 1,
-                    )
+                    border: border,
                   ),
-                  child: Text(
-                    day.toString(),
-                    style: TextStyle(
-                      fontWeight: hasTask ? FontWeight.bold : FontWeight.normal,
-                      color: hasTask ? Colors.green.shade800 : Colors.grey.shade800
-                    ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        day.toString(),
+                        style: TextStyle(
+                          fontWeight: hasActivity ? FontWeight.bold : FontWeight.normal,
+                          color: hasActivity ? Colors.black87 : Colors.grey.shade800
+                        ),
+                      ),
+                      if (hasActivity)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (hasTask) Container(margin: const EdgeInsets.symmetric(horizontal: 1), width: 4, height: 4, decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle)),
+                            if (hasRefuel) Container(margin: const EdgeInsets.symmetric(horizontal: 1), width: 4, height: 4, decoration: const BoxDecoration(color: Colors.orange, shape: BoxShape.circle)),
+                            if (hasIncident) Container(margin: const EdgeInsets.symmetric(horizontal: 1), width: 4, height: 4, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
+                          ],
+                        )
+                    ],
                   ),
                 );
               },
             ),
             const SizedBox(height: 24),
             // Legenda
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
               children: [
-                Container(width: 16, height: 16, decoration: BoxDecoration(color: Colors.green.shade50, border: Border.all(color: Colors.green.shade400), borderRadius: BorderRadius.circular(4))),
-                const SizedBox(width: 8),
-                const Text('Atividade Registada', style: TextStyle(color: Colors.grey)),
+                _buildLegendItem(Colors.green, 'Tarefas'),
+                _buildLegendItem(Colors.orange, 'Abastecimentos'),
+                _buildLegendItem(Colors.red, 'Incidentes'),
               ],
             )
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildLegendItem(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+      ],
     );
   }
 }
