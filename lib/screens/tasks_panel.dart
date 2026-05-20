@@ -222,6 +222,7 @@ class _TasksPanelState extends State<TasksPanel> with SingleTickerProviderStateM
                         'trailerPlate': trailerPlate,
                         'status': 'pending',
                         'timestamp': FieldValue.serverTimestamp(),
+                        'date': FieldValue.serverTimestamp(),
                       });
 
                       if (!dialogContext.mounted) return;

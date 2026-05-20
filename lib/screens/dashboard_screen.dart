@@ -492,7 +492,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final int unreadImages = data['unreadImages'] as int? ?? 0;
 
         Widget buildBadge(int count, Color color) {
-          if (count <= 0 || isSelected) return const SizedBox.shrink();
+          if (count <= 0) return const SizedBox.shrink();
           return Padding(
             padding: const EdgeInsets.only(left: 4.0), // Espaçamento entre bolinhas
             child: CircleAvatar(

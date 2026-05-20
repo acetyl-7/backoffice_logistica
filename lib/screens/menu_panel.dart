@@ -209,61 +209,96 @@ class MenuPanel extends StatelessWidget {
               ),
               const SizedBox(height: 48),
 
-              // ── BOTOES DE AÇÃO ──
-              Wrap(
-                spacing: 32,
-                runSpacing: 32,
-                alignment: WrapAlignment.center,
-                children: [
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.chat,
-                    color: Colors.blue.shade600,
-                    title: 'Abrir Chat',
-                    subtitle: 'Falar com o Motorista',
-                    onTap: onOpenChat,
-                  ),
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.checklist,
-                    color: Colors.teal.shade600,
-                    title: 'Ver Tarefas',
-                    subtitle: 'Gerir atividades do motorista',
-                    onTap: onOpenTasks,
-                  ),
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.local_gas_station,
-                    color: Colors.orange.shade600,
-                    title: 'Ver Abastecimentos',
-                    subtitle: 'Histórico de combustível',
-                    onTap: onOpenRefuels,
-                  ),
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.warning_amber_rounded,
-                    color: Colors.red.shade600,
-                    title: 'Ver Incidentes',
-                    subtitle: 'Gerir registos de problemas',
-                    onTap: onOpenIncidents,
-                  ),
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.image,
-                    color: Colors.deepPurple.shade600,
-                    title: 'Ver Imagens',
-                    subtitle: 'Fotos normais e Upscaled',
-                    onTap: onOpenImages,
-                  ),
-                  _buildMenuCard(
-                    context,
-                    icon: Icons.person_outline,
-                    color: Colors.blueGrey.shade600,
-                    title: 'Editar Perfil',
-                    subtitle: 'Dados e Contactos do Motorista',
-                    onTap: onOpenProfile,
-                  ),
-                ],
+              StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(driverId)
+                    .snapshots(),
+                builder: (context, userSnapshot) {
+                  final userData = userSnapshot.data?.data() as Map<String, dynamic>? ?? {};
+                  final int unreadTasks = userData['unreadTasks'] as int? ?? 0;
+                  final int unreadRefuels = userData['unreadRefuels'] as int? ?? 0;
+                  final int unreadIncidents = userData['unreadIncidents'] as int? ?? 0;
+                  final int unreadImages = userData['unreadImages'] as int? ?? 0;
+
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('messages')
+                        .where('driverId', isEqualTo: driverId)
+                        .where('sender', isEqualTo: 'driver')
+                        .where('status', isEqualTo: 'sent')
+                        .snapshots(),
+                    builder: (context, msgSnapshot) {
+                      final int unreadChat = msgSnapshot.data?.docs.length ?? 0;
+
+                      return Wrap(
+                        spacing: 32,
+                        runSpacing: 32,
+                        alignment: WrapAlignment.center,
+                        children: [
+                          _buildMenuCard(
+                            context,
+                            icon: Icons.chat,
+                            color: Colors.blue.shade600,
+                            title: 'Abrir Chat',
+                            subtitle: 'Falar com o Motorista',
+                            onTap: onOpenChat,
+                            badgeCount: unreadChat,
+                            badgeColor: Colors.blue.shade800,
+                          ),
+                          _buildMenuCard(
+                            context,
+                            icon: Icons.checklist,
+                            color: Colors.teal.shade600,
+                            title: 'Ver Tarefas',
+                            subtitle: 'Gerir atividades do motorista',
+                            onTap: onOpenTasks,
+                            badgeCount: unreadTasks,
+                            badgeColor: Colors.green,
+                          ),
+                          _buildMenuCard(
+                            context,
+                            icon: Icons.local_gas_station,
+                            color: Colors.orange.shade600,
+                            title: 'Ver Abastecimentos',
+                            subtitle: 'Histórico de combustível',
+                            onTap: onOpenRefuels,
+                            badgeCount: unreadRefuels,
+                            badgeColor: Colors.orange,
+                          ),
+                          _buildMenuCard(
+                            context,
+                            icon: Icons.warning_amber_rounded,
+                            color: Colors.red.shade600,
+                            title: 'Ver Incidentes',
+                            subtitle: 'Gerir registos de problemas',
+                            onTap: onOpenIncidents,
+                            badgeCount: unreadIncidents,
+                            badgeColor: Colors.red,
+                          ),
+                          _buildMenuCard(
+                            context,
+                            icon: Icons.image,
+                            color: Colors.deepPurple.shade600,
+                            title: 'Ver Imagens',
+                            subtitle: 'Fotos normais e Upscaled',
+                            onTap: onOpenImages,
+                            badgeCount: unreadImages,
+                            badgeColor: Colors.deepPurple,
+                          ),
+                          _buildMenuCard(
+                            context,
+                            icon: Icons.person_outline,
+                            color: Colors.blueGrey.shade600,
+                            title: 'Editar Perfil',
+                            subtitle: 'Dados e Contactos do Motorista',
+                            onTap: onOpenProfile,
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
               ),
 
               const SizedBox(height: 48),
@@ -334,57 +369,103 @@ class MenuPanel extends StatelessWidget {
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    int badgeCount = 0,
+    Color badgeColor = Colors.red,
   }) {
+    Widget cardContent = Container(
+      width: 300,
+      height: 250,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade300, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 64, color: color),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey.shade600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+
+    if (badgeCount > 0) {
+      cardContent = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          cardContent,
+          Positioned(
+            top: -12,
+            right: -12,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: badgeColor,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3),
+                boxShadow: [
+                  BoxShadow(
+                    color: badgeColor.withValues(alpha: 0.4),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              constraints: const BoxConstraints(
+                minWidth: 32,
+                minHeight: 32,
+              ),
+              child: Center(
+                child: Text(
+                  badgeCount > 99 ? '99+' : badgeCount.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 300,
-        height: 250,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade300, width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 64, color: color),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
+      child: cardContent,
     );
   }
 }

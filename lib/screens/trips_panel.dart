@@ -24,6 +24,8 @@ class _TripsPanelState extends State<TripsPanel> {
 
   // Monthly stats: month (1..12) -> List of tasks
   Map<int, List<Map<String, dynamic>>> _yearlyTasks = {};
+  Map<int, List<Map<String, dynamic>>> _yearlyRefuels = {};
+  Map<int, List<Map<String, dynamic>>> _yearlyIncidents = {};
   bool _isLoadingTasks = false;
 
   final List<String> _monthNames = [
@@ -68,29 +70,45 @@ class _TripsPanelState extends State<TripsPanel> {
     setState(() {
       _isLoadingTasks = true;
       _yearlyTasks.clear();
+      _yearlyRefuels.clear();
+      _yearlyIncidents.clear();
     });
 
-    final startOfYear = DateTime(selectedYear, 1, 1);
-    final endOfYear = DateTime(selectedYear + 1, 1, 1);
-
     try {
-      final snap = await FirebaseFirestore.instance
+      // Fetch Tasks
+      final tasksSnap = await FirebaseFirestore.instance
           .collection('tasks')
           .where('driverId', isEqualTo: driverIdToFetch)
-          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfYear))
-          .where('date', isLessThan: Timestamp.fromDate(endOfYear))
+          .get();
+
+      // Fetch Refuels
+      final refuelsSnap = await FirebaseFirestore.instance
+          .collection('refuels')
+          .where('driverId', isEqualTo: driverIdToFetch)
+          .get();
+
+      // Fetch Incidents
+      final incidentsSnap = await FirebaseFirestore.instance
+          .collection('incidents')
+          .where('driverId', isEqualTo: driverIdToFetch)
           .get();
 
       Map<int, List<Map<String, dynamic>>> tasksByMonth = {
         for (var i = 1; i <= 12; i++) i: []
       };
+      Map<int, List<Map<String, dynamic>>> refuelsByMonth = {
+        for (var i = 1; i <= 12; i++) i: []
+      };
+      Map<int, List<Map<String, dynamic>>> incidentsByMonth = {
+        for (var i = 1; i <= 12; i++) i: []
+      };
 
-      for (var doc in snap.docs) {
+      for (var doc in tasksSnap.docs) {
         final data = doc.data();
-        final ts = data['date'] as Timestamp?;
+        final ts = data['date'] as Timestamp? ?? data['timestamp'] as Timestamp?;
         if (ts != null) {
           final dt = ts.toDate();
-          if (tasksByMonth.containsKey(dt.month)) {
+          if (dt.year == selectedYear && tasksByMonth.containsKey(dt.month)) {
             data['id'] = doc.id;
             data['dt'] = dt;
             tasksByMonth[dt.month]!.add(data);
@@ -98,12 +116,40 @@ class _TripsPanelState extends State<TripsPanel> {
         }
       }
 
+      for (var doc in refuelsSnap.docs) {
+        final data = doc.data();
+        final ts = data['timestamp'] as Timestamp?;
+        if (ts != null) {
+          final dt = ts.toDate();
+          if (dt.year == selectedYear && refuelsByMonth.containsKey(dt.month)) {
+            data['id'] = doc.id;
+            data['dt'] = dt;
+            refuelsByMonth[dt.month]!.add(data);
+          }
+        }
+      }
+
+      for (var doc in incidentsSnap.docs) {
+        final data = doc.data();
+        final ts = data['timestamp'] as Timestamp? ?? data['incidentDate'] as Timestamp?;
+        if (ts != null) {
+          final dt = ts.toDate();
+          if (dt.year == selectedYear && incidentsByMonth.containsKey(dt.month)) {
+            data['id'] = doc.id;
+            data['dt'] = dt;
+            incidentsByMonth[dt.month]!.add(data);
+          }
+        }
+      }
+
       setState(() {
         _yearlyTasks = tasksByMonth;
+        _yearlyRefuels = refuelsByMonth;
+        _yearlyIncidents = incidentsByMonth;
         _isLoadingTasks = false;
       });
     } catch (e) {
-      debugPrint("Erro ao buscar tarefas anuais: $e");
+      debugPrint("Erro ao buscar dados anuais: $e");
       setState(() {
         _isLoadingTasks = false;
       });
@@ -113,6 +159,8 @@ class _TripsPanelState extends State<TripsPanel> {
   void _showMonthCalendar(int monthIndex) {
     final month = monthIndex + 1;
     final tasksForMonth = _yearlyTasks[month] ?? [];
+    final refuelsForMonth = _yearlyRefuels[month] ?? [];
+    final incidentsForMonth = _yearlyIncidents[month] ?? [];
 
     showDialog(
       context: context,
@@ -122,6 +170,8 @@ class _TripsPanelState extends State<TripsPanel> {
           month: month,
           monthName: _monthNames[monthIndex],
           tasks: tasksForMonth,
+          refuels: refuelsForMonth,
+          incidents: incidentsForMonth,
         );
       },
     );
@@ -364,6 +414,10 @@ class _TripsPanelState extends State<TripsPanel> {
   }
 
   Widget _buildMonthCard(int monthIndex, String monthName, int taskCount) {
+    final month = monthIndex + 1;
+    final refuelCount = _yearlyRefuels[month]?.length ?? 0;
+    final incidentCount = _yearlyIncidents[month]?.length ?? 0;
+
     return InkWell(
       onTap: () => _showMonthCalendar(monthIndex),
       borderRadius: BorderRadius.circular(16),
@@ -396,8 +450,8 @@ class _TripsPanelState extends State<TripsPanel> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                      _buildMetricRow(Icons.assignment, 'Tarefas', taskCount.toString(), Colors.green),
-                     _buildMetricRow(Icons.local_gas_station, 'Abast.', '0', Colors.orange),
-                     _buildMetricRow(Icons.warning, 'Incidentes', '0', Colors.red),
+                     _buildMetricRow(Icons.local_gas_station, 'Abast.', refuelCount.toString(), Colors.orange),
+                     _buildMetricRow(Icons.warning, 'Incidentes', incidentCount.toString(), Colors.red),
                   ],
                 ),
               ),
@@ -432,22 +486,41 @@ class _MonthCalendarDialog extends StatelessWidget {
   final int month;
   final String monthName;
   final List<Map<String, dynamic>> tasks;
+  final List<Map<String, dynamic>> refuels;
+  final List<Map<String, dynamic>> incidents;
 
   const _MonthCalendarDialog({
     required this.year,
     required this.month,
     required this.monthName,
     required this.tasks,
+    required this.refuels,
+    required this.incidents,
   });
 
   @override
   Widget build(BuildContext context) {
     // Collect active days
-    final Set<int> activeDays = {};
+    final Set<int> taskDays = {};
+    final Set<int> refuelDays = {};
+    final Set<int> incidentDays = {};
+
     for (var t in tasks) {
       if (t['dt'] != null) {
         final dt = t['dt'] as DateTime;
-        activeDays.add(dt.day);
+        taskDays.add(dt.day);
+      }
+    }
+    for (var r in refuels) {
+      if (r['dt'] != null) {
+        final dt = r['dt'] as DateTime;
+        refuelDays.add(dt.day);
+      }
+    }
+    for (var i in incidents) {
+      if (i['dt'] != null) {
+        final dt = i['dt'] as DateTime;
+        incidentDays.add(dt.day);
       }
     }
 
@@ -504,24 +577,70 @@ class _MonthCalendarDialog extends StatelessWidget {
                   return const SizedBox(); // Empty padding for first week
                 }
                 final day = index - weekdayStart + 2;
-                final hasTask = activeDays.contains(day);
+                final hasTask = taskDays.contains(day);
+                final hasRefuel = refuelDays.contains(day);
+                final hasIncident = incidentDays.contains(day);
+                final hasAny = hasTask || hasRefuel || hasIncident;
 
                 return Container(
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: hasTask ? Colors.green.shade50 : Colors.grey.shade50,
+                    color: hasAny ? const Color(0xFFF8FAFC) : Colors.grey.shade50,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: hasTask ? Colors.green.shade400 : Colors.grey.shade300,
-                      width: hasTask ? 2 : 1,
+                      color: hasAny ? const Color(0xFFCBD5E1) : Colors.grey.shade300,
+                      width: hasAny ? 1.5 : 1,
                     )
                   ),
-                  child: Text(
-                    day.toString(),
-                    style: TextStyle(
-                      fontWeight: hasTask ? FontWeight.bold : FontWeight.normal,
-                      color: hasTask ? Colors.green.shade800 : Colors.grey.shade800
-                    ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        day.toString(),
+                        style: TextStyle(
+                          fontWeight: hasAny ? FontWeight.bold : FontWeight.normal,
+                          color: hasAny ? const Color(0xFF1E293B) : Colors.grey.shade800
+                        ),
+                      ),
+                      if (hasAny) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (hasTask)
+                              Container(
+                                width: 5,
+                                height: 5,
+                                margin: const EdgeInsets.symmetric(horizontal: 1),
+                                decoration: const BoxDecoration(
+                                  color: Colors.green,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            if (hasRefuel)
+                              Container(
+                                width: 5,
+                                height: 5,
+                                margin: const EdgeInsets.symmetric(horizontal: 1),
+                                decoration: const BoxDecoration(
+                                  color: Colors.orange,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            if (hasIncident)
+                              Container(
+                                width: 5,
+                                height: 5,
+                                margin: const EdgeInsets.symmetric(horizontal: 1),
+                                decoration: const BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                          ],
+                        )
+                      ]
+                    ],
                   ),
                 );
               },
@@ -531,14 +650,36 @@ class _MonthCalendarDialog extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(width: 16, height: 16, decoration: BoxDecoration(color: Colors.green.shade50, border: Border.all(color: Colors.green.shade400), borderRadius: BorderRadius.circular(4))),
-                const SizedBox(width: 8),
-                const Text('Atividade Registada', style: TextStyle(color: Colors.grey)),
+                _buildLegendItem(Colors.green, 'Tarefas'),
+                const SizedBox(width: 16),
+                _buildLegendItem(Colors.orange, 'Abastecimentos'),
+                const SizedBox(width: 16),
+                _buildLegendItem(Colors.red, 'Incidentes'),
               ],
             )
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildLegendItem(Color color, String label) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w500),
+        ),
+      ],
     );
   }
 }

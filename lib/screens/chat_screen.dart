@@ -46,6 +46,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'status': 'sent',
         'driverId': widget.selectedDriverId,
         'timestamp': FieldValue.serverTimestamp(),
+        'needsSqlSync': true,
       };
 
       if (_replyingToMessage != null) {
@@ -109,6 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
           'status': 'sent',
           'driverId': widget.selectedDriverId,
           'timestamp': FieldValue.serverTimestamp(),
+          'needsSqlSync': true,
         };
 
         if (_replyingToMessage != null) {
