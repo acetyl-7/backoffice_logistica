@@ -62,10 +62,8 @@ class _TripsPanelState extends State<TripsPanel> {
   }
 
   Future<void> _fetchYearlyData() async {
-    if (selectedFleetDriverId == null && selectedDriverId == null) return;
-    final driverIdToFetch = selectedFleetDriverId != null && selectedFleetDriverId!.isNotEmpty 
-        ? selectedFleetDriverId! 
-        : selectedDriverId!;
+    final String? mainDriverId = selectedDriverId;
+    if (mainDriverId == null) return;
 
     setState(() {
       _isLoadingTasks = true;
@@ -75,22 +73,36 @@ class _TripsPanelState extends State<TripsPanel> {
     });
 
     try {
-      // Fetch Tasks
-      final tasksSnap = await FirebaseFirestore.instance
-          .collection('tasks')
-          .where('driverId', isEqualTo: driverIdToFetch)
-          .get();
+      // Fetch Tasks: Could be assigned to the SQL ID or the Firebase Auth UID
+      final List<String> taskDriverIds = [
+        mainDriverId,
+        if (selectedFleetDriverId != null && selectedFleetDriverId!.isNotEmpty)
+          selectedFleetDriverId!,
+      ];
 
-      // Fetch Refuels
+      final QuerySnapshot<Map<String, dynamic>> tasksSnap;
+      if (taskDriverIds.length > 1) {
+        tasksSnap = await FirebaseFirestore.instance
+            .collection('tasks')
+            .where('driverId', whereIn: taskDriverIds)
+            .get();
+      } else {
+        tasksSnap = await FirebaseFirestore.instance
+            .collection('tasks')
+            .where('driverId', isEqualTo: mainDriverId)
+            .get();
+      }
+
+      // Fetch Refuels: Always stored using the Firebase Auth UID
       final refuelsSnap = await FirebaseFirestore.instance
           .collection('refuels')
-          .where('driverId', isEqualTo: driverIdToFetch)
+          .where('driverId', isEqualTo: mainDriverId)
           .get();
 
-      // Fetch Incidents
+      // Fetch Incidents: Always stored using the Firebase Auth UID
       final incidentsSnap = await FirebaseFirestore.instance
           .collection('incidents')
-          .where('driverId', isEqualTo: driverIdToFetch)
+          .where('driverId', isEqualTo: mainDriverId)
           .get();
 
       Map<int, List<Map<String, dynamic>>> tasksByMonth = {
@@ -105,7 +117,9 @@ class _TripsPanelState extends State<TripsPanel> {
 
       for (var doc in tasksSnap.docs) {
         final data = doc.data();
-        final ts = data['date'] as Timestamp? ?? data['timestamp'] as Timestamp?;
+        final ts = data['completedAt'] as Timestamp? ??
+            data['date'] as Timestamp? ??
+            data['timestamp'] as Timestamp?;
         if (ts != null) {
           final dt = ts.toDate();
           if (dt.year == selectedYear && tasksByMonth.containsKey(dt.month)) {
@@ -136,7 +150,8 @@ class _TripsPanelState extends State<TripsPanel> {
 
       for (var doc in incidentsSnap.docs) {
         final data = doc.data();
-        final ts = data['timestamp'] as Timestamp? ?? data['incidentDate'] as Timestamp?;
+        final ts = data['incidentDate'] as Timestamp? ??
+            data['timestamp'] as Timestamp?;
         if (ts != null) {
           final dt = ts.toDate();
           if (dt.year == selectedYear && incidentsByMonth.containsKey(dt.month)) {
