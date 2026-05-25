@@ -26,6 +26,9 @@ class _TripsPanelState extends State<TripsPanel> {
   Map<int, List<Map<String, dynamic>>> _yearlyTasks = {};
   Map<int, List<Map<String, dynamic>>> _yearlyRefuels = {};
   Map<int, List<Map<String, dynamic>>> _yearlyIncidents = {};
+  Map<int, int> _startingTasks = {};
+  Map<int, int> _startingRefuels = {};
+  Map<int, int> _startingIncidents = {};
   bool _isLoadingTasks = false;
 
   final List<String> _monthNames = [
@@ -70,6 +73,9 @@ class _TripsPanelState extends State<TripsPanel> {
       _yearlyTasks.clear();
       _yearlyRefuels.clear();
       _yearlyIncidents.clear();
+      _startingTasks.clear();
+      _startingRefuels.clear();
+      _startingIncidents.clear();
     });
 
     try {
@@ -104,6 +110,32 @@ class _TripsPanelState extends State<TripsPanel> {
           .collection('incidents')
           .where('driverId', isEqualTo: mainDriverId)
           .get();
+
+      // Fetch starting counts from yearly_stats if they exist
+      final statsDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(mainDriverId)
+          .collection('yearly_stats')
+          .doc(selectedYear.toString())
+          .get();
+
+      Map<int, int> tempStartingTasks = {};
+      Map<int, int> tempStartingRefuels = {};
+      Map<int, int> tempStartingIncidents = {};
+
+      if (statsDoc.exists) {
+        final statsData = statsDoc.data();
+        if (statsData != null) {
+          final tasksMap = statsData['tasks'] as Map<String, dynamic>?;
+          tasksMap?.forEach((k, v) => tempStartingTasks[int.tryParse(k) ?? 0] = (v as num).toInt());
+          
+          final refuelsMap = statsData['refuels'] as Map<String, dynamic>?;
+          refuelsMap?.forEach((k, v) => tempStartingRefuels[int.tryParse(k) ?? 0] = (v as num).toInt());
+          
+          final incidentsMap = statsData['incidents'] as Map<String, dynamic>?;
+          incidentsMap?.forEach((k, v) => tempStartingIncidents[int.tryParse(k) ?? 0] = (v as num).toInt());
+        }
+      }
 
       Map<int, List<Map<String, dynamic>>> tasksByMonth = {
         for (var i = 1; i <= 12; i++) i: []
@@ -166,6 +198,9 @@ class _TripsPanelState extends State<TripsPanel> {
         _yearlyTasks = tasksByMonth;
         _yearlyRefuels = refuelsByMonth;
         _yearlyIncidents = incidentsByMonth;
+        _startingTasks = tempStartingTasks;
+        _startingRefuels = tempStartingRefuels;
+        _startingIncidents = tempStartingIncidents;
         _isLoadingTasks = false;
       });
     } catch (e) {
@@ -419,9 +454,9 @@ class _TripsPanelState extends State<TripsPanel> {
                     itemBuilder: (context, index) {
                       final month = index + 1;
                       final monthName = _monthNames[index];
-                      final taskCount = _yearlyTasks[month]?.length ?? 0;
-                      final refuelCount = _yearlyRefuels[month]?.length ?? 0;
-                      final incidentCount = _yearlyIncidents[month]?.length ?? 0;
+                      final taskCount = (_yearlyTasks[month]?.length ?? 0) + (_startingTasks[month] ?? 0);
+                      final refuelCount = (_yearlyRefuels[month]?.length ?? 0) + (_startingRefuels[month] ?? 0);
+                      final incidentCount = (_yearlyIncidents[month]?.length ?? 0) + (_startingIncidents[month] ?? 0);
                       return _buildMonthCard(index, monthName, taskCount, refuelCount, incidentCount);
                     },
                   ),

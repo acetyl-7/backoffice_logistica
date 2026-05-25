@@ -67,6 +67,121 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _deleteSyncedMessages(String driverId) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('messages')
+          .where('driverId', isEqualTo: driverId)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(content: Text('Nenhuma mensagem encontrada para este motorista.')),
+        );
+        return;
+      }
+
+      int countDeleted = 0;
+      final batch = FirebaseFirestore.instance.batch();
+
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final needsSqlSync = data['needsSqlSync'];
+        final sqlNotificationId = data['sqlNotificationId']?.toString();
+
+        // Layer of security: Only delete if it does NOT need SQL sync and has a SQL ID
+        if (needsSqlSync == false && sqlNotificationId != null && sqlNotificationId.isNotEmpty) {
+          batch.delete(doc.reference);
+          countDeleted++;
+        }
+      }
+
+      if (countDeleted > 0) {
+        await batch.commit();
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text('$countDeleted mensagens sincronizadas foram limpas com total segurança.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('Nenhuma mensagem sincronizada encontrada para limpeza segura.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Erro ao limpar mensagens: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteSyncedTasks(String driverId) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('tasks')
+          .where('driverId', isEqualTo: driverId)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(content: Text('Nenhuma tarefa encontrada para este motorista.')),
+        );
+        return;
+      }
+
+      int countDeleted = 0;
+      final batch = FirebaseFirestore.instance.batch();
+
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final status = data['status']?.toString() ?? '';
+        final needsSqlSync = data['needsSqlSync'];
+        final sqlId = data['sqlId']?.toString();
+
+        final isCompleted = status == 'completed' || status == 'terminada' || status == 'anulada';
+
+        // Layer of security: Only delete completed tasks that are already synced and have SQL ID
+        if (isCompleted && needsSqlSync != true && sqlId != null && sqlId.isNotEmpty) {
+          batch.delete(doc.reference);
+          countDeleted++;
+        }
+      }
+
+      if (countDeleted > 0) {
+        await batch.commit();
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text('$countDeleted tarefas concluídas e sincronizadas foram limpas do Firebase.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('Nenhuma tarefa concluída/sincronizada encontrada para limpeza segura.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Erro ao limpar tarefas: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   void _selectDriver({
     required String driverId,
     required String nome,
@@ -538,6 +653,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
               buildBadge(unreadImages, Colors.purple), // Imagens
               // Mensagens de Chat (usar azul escuro para distinguir)
               buildBadge(unreadCount, Colors.blue.shade800), 
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, size: 20),
+                tooltip: 'Ações Seguras',
+                onSelected: (value) {
+                  if (value == 'delete_messages') {
+                    _deleteSyncedMessages(driverId);
+                  } else if (value == 'delete_tasks') {
+                    _deleteSyncedTasks(driverId);
+                  }
+                },
+                itemBuilder: (BuildContext context) => [
+                  const PopupMenuItem<String>(
+                    value: 'delete_messages',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_sweep, color: Colors.red, size: 20),
+                        SizedBox(width: 8),
+                        Text('Limpar Chat (Seguro)'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'delete_tasks',
+                    child: Row(
+                      children: [
+                        Icon(Icons.cleaning_services, color: Colors.teal, size: 20),
+                        SizedBox(width: 8),
+                        Text('Limpar Tarefas (Seguro)'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
           selected: isSelected,
