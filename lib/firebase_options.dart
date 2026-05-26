@@ -50,11 +50,11 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCt7Sj7qG3mbe47AR9GtIlFJaJdwqpAfNU',
-    appId: '1:617473071905:android:0bd68fc4c2dd73e90c7c60',
-    messagingSenderId: '617473071905',
-    projectId: 'logichatinfofirst',
-    storageBucket: 'logichatinfofirst.firebasestorage.app',
+    apiKey: 'AIzaSyCyofX2gfe3hK5sGkikwvFmXAdd1yq9fSs',
+    appId: '1:909421828884:android:3eec31284cee9aa1e58001',
+    messagingSenderId: '909421828884',
+    projectId: 'cisterpor-fleetsync',
+    storageBucket: 'cisterpor-fleetsync.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -76,11 +76,12 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDjn3i7OzS90XKzBRWbOJi59ee64hHOG0M',
-    appId: '1:617473071905:web:bd86f2a5e7cf758c0c7c60',
-    messagingSenderId: '617473071905',
-    projectId: 'logichatinfofirst',
-    authDomain: 'logichatinfofirst.firebaseapp.com',
-    storageBucket: 'logichatinfofirst.firebasestorage.app',
+    apiKey: 'AIzaSyB1o0wTDYUag0F5LgeVDRNhdr0d9t1H4zg',
+    appId: '1:909421828884:web:fc43779bc1daedabe58001',
+    messagingSenderId: '909421828884',
+    projectId: 'cisterpor-fleetsync',
+    authDomain: 'cisterpor-fleetsync.firebaseapp.com',
+    storageBucket: 'cisterpor-fleetsync.firebasestorage.app',
   );
+
 }
