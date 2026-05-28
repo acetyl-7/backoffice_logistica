@@ -1,5 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' as rr;
 
 class TripsPanel extends StatefulWidget {
   final String? driverId;
@@ -16,6 +20,7 @@ class _TripsPanelState extends State<TripsPanel> {
   String? selectedDriverId;
   String? selectedFleetDriverId;
   int selectedYear = DateTime.now().year;
+  int _activeTab = 0; // 0: Estatísticas, 1: Relatório de Trabalho
 
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -47,6 +52,209 @@ class _TripsPanelState extends State<TripsPanel> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  String _formatDatePt(DateTime dt) {
+    final List<String> weekDays = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo'];
+    final List<String> months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    
+    final wDay = weekDays[dt.weekday - 1];
+    final monthName = months[dt.month - 1];
+    
+    return '$wDay, ${dt.day} de $monthName de ${dt.year}';
+  }
+
+  Future<void> _openMapLink(double lat, double lon) async {
+    final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lon');
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        debugPrint('Não foi possível abrir o mapa para $url');
+      }
+    } catch (e) {
+      debugPrint('Erro ao abrir link do mapa: $e');
+    }
+  }
+
+  void _showInteractiveMapDialog(GeoPoint startLoc, GeoPoint? endLoc) {
+    double centerLat = startLoc.latitude;
+    double centerLon = startLoc.longitude;
+    if (endLoc != null) {
+      centerLat = (startLoc.latitude + endLoc.latitude) / 2;
+      centerLon = (startLoc.longitude + endLoc.longitude) / 2;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Container(
+            width: 800,
+            height: 600,
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.map, color: Color(0xFF0F172A)),
+                        SizedBox(width: 10),
+                        Text(
+                          'Mapa do Dia de Trabalho',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Stack(
+                      children: [
+                        FlutterMap(
+                          options: MapOptions(
+                            initialCenter: rr.LatLng(centerLat, centerLon),
+                            initialZoom: 13.0,
+                          ),
+                          children: [
+                            TileLayer(
+                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.cisterpor.backoffice_logistica',
+                            ),
+                            if (endLoc != null)
+                              PolylineLayer(
+                                polylines: [
+                                  Polyline(
+                                    points: [
+                                      rr.LatLng(startLoc.latitude, startLoc.longitude),
+                                      rr.LatLng(endLoc.latitude, endLoc.longitude),
+                                    ],
+                                    strokeWidth: 4.0,
+                                    color: Colors.blue.shade600,
+                                  ),
+                                ],
+                              ),
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: rr.LatLng(startLoc.latitude, startLoc.longitude),
+                                  width: 40,
+                                  height: 40,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade600,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 3),
+                                      boxShadow: const [
+                                        BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3)),
+                                      ],
+                                    ),
+                                    child: const Icon(Icons.location_on, color: Colors.white, size: 20),
+                                  ),
+                                ),
+                                if (endLoc != null)
+                                  Marker(
+                                    point: rr.LatLng(endLoc.latitude, endLoc.longitude),
+                                    width: 40,
+                                    height: 40,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.shade600,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 3),
+                                        boxShadow: const [
+                                          BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3)),
+                                        ],
+                                      ),
+                                      child: const Icon(Icons.flag, color: Colors.white, size: 20),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Positioned(
+                          bottom: 16,
+                          left: 16,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(width: 12, height: 12, decoration: BoxDecoration(color: Colors.green.shade600, shape: BoxShape.circle)),
+                                const SizedBox(width: 6),
+                                const Text('Início', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                                const SizedBox(width: 16),
+                                Container(width: 12, height: 12, decoration: BoxDecoration(color: Colors.red.shade600, shape: BoxShape.circle)),
+                                const SizedBox(width: 6),
+                                const Text('Fim', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTabButton(int tabIndex, String label, IconData icon) {
+    final isSelected = _activeTab == tabIndex;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _activeTab = tabIndex;
+        });
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0F172A) : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: isSelected ? const Color(0xFF0F172A) : Colors.grey.shade300),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: isSelected ? Colors.white : const Color(0xFF0F172A)),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: isSelected ? Colors.white : const Color(0xFF0F172A),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _selectDriver(String uid, String fleetDriverId) {
@@ -418,48 +626,69 @@ class _TripsPanelState extends State<TripsPanel> {
               border: Border(bottom: BorderSide(color: Colors.black12)),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.chevron_left, size: 32),
-                  onPressed: () => _changeYear(-1),
+                Row(
+                  children: [
+                    Text(
+                      widget.driverName != null && widget.driverName!.isNotEmpty 
+                          ? widget.driverName! 
+                          : 'Atividades do Motorista',
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                    ),
+                    const SizedBox(width: 32),
+                    _buildTabButton(0, 'Estatísticas', Icons.calendar_month),
+                    const SizedBox(width: 12),
+                    _buildTabButton(1, 'Relatório de Viagens', Icons.description),
+                  ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    selectedYear.toString(),
-                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                if (_activeTab == 0)
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left, size: 28),
+                        onPressed: () => _changeYear(-1),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          selectedYear.toString(),
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right, size: 28),
+                        onPressed: () => _changeYear(1),
+                      ),
+                    ],
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right, size: 32),
-                  onPressed: () => _changeYear(1),
-                ),
               ],
             ),
           ),
           
           Expanded(
-            child: _isLoadingTasks
-                ? const Center(child: CircularProgressIndicator())
-                : GridView.builder(
-                    padding: const EdgeInsets.all(24),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      crossAxisSpacing: 24,
-                      mainAxisSpacing: 24,
-                      childAspectRatio: 1.2,
-                    ),
-                    itemCount: 12,
-                    itemBuilder: (context, index) {
-                      final month = index + 1;
-                      final monthName = _monthNames[index];
-                      final taskCount = (_yearlyTasks[month]?.length ?? 0) + (_startingTasks[month] ?? 0);
-                      final refuelCount = (_yearlyRefuels[month]?.length ?? 0) + (_startingRefuels[month] ?? 0);
-                      final incidentCount = (_yearlyIncidents[month]?.length ?? 0) + (_startingIncidents[month] ?? 0);
-                      return _buildMonthCard(index, monthName, taskCount, refuelCount, incidentCount);
-                    },
-                  ),
+            child: _activeTab == 0
+                ? (_isLoadingTasks
+                    ? const Center(child: CircularProgressIndicator())
+                    : GridView.builder(
+                        padding: const EdgeInsets.all(24),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 4,
+                          crossAxisSpacing: 24,
+                          mainAxisSpacing: 24,
+                          childAspectRatio: 1.2,
+                        ),
+                        itemCount: 12,
+                        itemBuilder: (context, index) {
+                          final month = index + 1;
+                          final monthName = _monthNames[index];
+                          final taskCount = (_yearlyTasks[month]?.length ?? 0) + (_startingTasks[month] ?? 0);
+                          final refuelCount = (_yearlyRefuels[month]?.length ?? 0) + (_startingRefuels[month] ?? 0);
+                          final incidentCount = (_yearlyIncidents[month]?.length ?? 0) + (_startingIncidents[month] ?? 0);
+                          return _buildMonthCard(index, monthName, taskCount, refuelCount, incidentCount);
+                        },
+                      ))
+                : _buildWorkReportsView(),
           ),
         ],
       ),
@@ -526,6 +755,419 @@ class _TripsPanelState extends State<TripsPanel> {
           child: Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
         ),
       ],
+    );
+  }
+
+  Widget _buildWorkReportsView() {
+    final String? mainDriverId = selectedDriverId;
+    if (mainDriverId == null) return const SizedBox();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('trips')
+          .where('driverId', isEqualTo: mainDriverId)
+          .orderBy('startTime', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Erro ao carregar relatórios de viagens: ${snapshot.error}',
+              style: const TextStyle(color: Colors.red, fontSize: 16),
+            ),
+          );
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final tripDocs = snapshot.data?.docs ?? [];
+        if (tripDocs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.description_outlined, size: 64, color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                Text(
+                  'Nenhuma viagem registada para este motorista.',
+                  style: TextStyle(fontSize: 16, color: Colors.grey.shade500, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(24),
+          itemCount: tripDocs.length,
+          itemBuilder: (context, index) {
+            final doc = tripDocs[index];
+            final data = doc.data() as Map<String, dynamic>;
+            return _buildTripReportCard(doc.id, data);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTripReportCard(String tripId, Map<String, dynamic> data) {
+    final status = data['status']?.toString() ?? 'completed';
+    final isActive = status == 'active';
+    
+    // Dates
+    DateTime? startTime;
+    final stVal = data['startTime'] ?? data['actualStartTime'];
+    if (stVal != null && stVal is Timestamp) {
+      startTime = stVal.toDate();
+    }
+    
+    DateTime? endTime;
+    final etVal = data['endTime'];
+    if (etVal != null && etVal is Timestamp) {
+      endTime = etVal.toDate();
+    }
+
+    final dateStr = startTime != null ? _formatDatePt(startTime) : 'Data Desconhecida';
+    final startHour = startTime != null ? DateFormat('HH:mm').format(startTime) : '—';
+    final endHour = endTime != null 
+        ? DateFormat('HH:mm').format(endTime) 
+        : (isActive ? 'Em curso...' : '—');
+    final titleWithHours = '$dateStr  •  Início: $startHour  •  Fim: $endHour';
+    
+    // KMs
+    final double startKms = (data['startKms'] as num?)?.toDouble() ?? 0.0;
+    final double? endKms = (data['endKms'] as num?)?.toDouble();
+    final double? distance = endKms != null ? (endKms - startKms) : null;
+    
+    // Vehicle
+    final String tractor = data['tractorPlate']?.toString() ?? '—';
+    final String trailer = data['trailerPlate']?.toString() ?? '';
+
+    // Locations
+    final startLoc = data['startLocation'] as GeoPoint?;
+    final endLoc = data['endLocation'] as GeoPoint?;
+
+    // Duration calculation
+    String durationStr = '—';
+    if (startTime != null) {
+      final endCompare = endTime ?? DateTime.now();
+      final diff = endCompare.difference(startTime);
+      final hours = diff.inHours;
+      final minutes = diff.inMinutes.remainder(60);
+      durationStr = '${hours}h ${minutes}m';
+    }
+
+    final startKmsStr = startKms.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.');
+    final endKmsStr = endKms != null 
+        ? endKms.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')
+        : '—';
+    final distanceStr = distance != null 
+        ? '${distance.toStringAsFixed(1)} km' 
+        : (isActive ? 'Em viagem...' : '—');
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 20),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(
+                color: isActive ? Colors.green.shade600 : Colors.blueGrey.shade600,
+                width: 6,
+              ),
+            ),
+          ),
+          child: ExpansionTile(
+            initiallyExpanded: true,
+            tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            backgroundColor: Colors.white,
+            collapsedBackgroundColor: Colors.white,
+            leading: Icon(
+              isActive ? Icons.play_circle_fill : Icons.check_circle,
+              color: isActive ? Colors.green.shade600 : Colors.blueGrey.shade600,
+              size: 32,
+            ),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    titleWithHours,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isActive ? Colors.green.shade50 : Colors.blueGrey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isActive ? Colors.green.shade300 : Colors.blueGrey.shade300,
+                    ),
+                  ),
+                  child: Text(
+                    isActive ? 'Ativo (Em Curso)' : 'Concluído',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isActive ? Colors.green.shade700 : Colors.blueGrey.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            children: [
+              Container(
+                color: Colors.grey.shade50,
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Column 1: Veículo
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'VEÍCULO',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blueGrey.shade400,
+                                  letterSpacing: 1.1,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  const Icon(Icons.local_shipping, size: 20, color: Colors.blueGrey),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Trator: $tractor',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                      ),
+                                      if (trailer.isNotEmpty)
+                                        Text(
+                                          'Reboque: $trailer',
+                                          style: TextStyle(fontSize: 13, color: Colors.blueGrey.shade600),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        
+                        // Column 2: Horário
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'HORÁRIO',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blueGrey.shade400,
+                                  letterSpacing: 1.1,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  const Icon(Icons.access_time, size: 20, color: Colors.blueGrey),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Início: ${startTime != null ? DateFormat('HH:mm').format(startTime) : "—"}',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                      ),
+                                      Text(
+                                        'Fim: ${endTime != null ? DateFormat('HH:mm').format(endTime) : (isActive ? "Em curso..." : "—")}',
+                                        style: TextStyle(fontSize: 13, color: Colors.blueGrey.shade600),
+                                      ),
+                                      Text(
+                                        'Tempo Total: $durationStr',
+                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: isActive ? Colors.green.shade700 : Colors.blueGrey.shade700),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Column 3: Quilómetros
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'QUILÓMETROS',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blueGrey.shade400,
+                                  letterSpacing: 1.1,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  const Icon(Icons.add_road, size: 20, color: Colors.blueGrey),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Inicial: $startKmsStr km',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                      ),
+                                      Text(
+                                        'Final: ${endKms != null ? "$endKmsStr km" : (isActive ? "Em viagem..." : "—")}',
+                                        style: TextStyle(fontSize: 13, color: Colors.blueGrey.shade600),
+                                      ),
+                                      Text(
+                                        'Distância: $distanceStr',
+                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: distance != null ? Colors.blue.shade700 : Colors.blueGrey.shade600),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Column 4: Localização e Google Maps
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'LOCALIZAÇÕES',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blueGrey.shade400,
+                                  letterSpacing: 1.1,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              if (startLoc != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8.0),
+                                  child: InkWell(
+                                    onTap: () => _openMapLink(startLoc.latitude, startLoc.longitude),
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.location_on, size: 16, color: Colors.green),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'Início: ${startLoc.latitude.toStringAsFixed(4)}, ${startLoc.longitude.toStringAsFixed(4)}',
+                                            style: const TextStyle(fontSize: 12, color: Colors.blue, decoration: TextDecoration.underline),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Icon(Icons.map, size: 14, color: Colors.blue.shade700),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              if (endLoc != null)
+                                InkWell(
+                                  onTap: () => _openMapLink(endLoc.latitude, endLoc.longitude),
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.location_on, size: 16, color: Colors.red),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Fim: ${endLoc.latitude.toStringAsFixed(4)}, ${endLoc.longitude.toStringAsFixed(4)}',
+                                          style: const TextStyle(fontSize: 12, color: Colors.blue, decoration: TextDecoration.underline),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Icon(Icons.map, size: 14, color: Colors.blue.shade700),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              else if (isActive)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.location_searching, size: 16, color: Colors.green.shade400),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Em viagem...',
+                                        style: TextStyle(fontSize: 12, color: Colors.green.shade600, fontStyle: FontStyle.italic),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              if (startLoc != null) ...[
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _showInteractiveMapDialog(startLoc, endLoc),
+                                    icon: const Icon(Icons.map, size: 18),
+                                    label: const Text('Mostrar mapa'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF0F172A),
+                                      side: const BorderSide(color: Color(0xFF0F172A)),
+                                      padding: const EdgeInsets.symmetric(vertical: 10),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
