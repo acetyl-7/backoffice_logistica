@@ -126,9 +126,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _deleteSyncedTasks(String driverId) async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     try {
+      // 1. Obter o documento do utilizador para ver se tem um driverId do SQL associado
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(driverId)
+          .get();
+
+      String? sqlDriverId;
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        sqlDriverId = userData?['driverId']?.toString();
+      }
+
+      // 2. Procurar tarefas associadas tanto ao Firebase UID como ao SQL driverId
+      final List<String> searchDriverIds = [
+        driverId,
+        if (sqlDriverId != null && sqlDriverId.isNotEmpty) sqlDriverId,
+      ];
+
       final querySnapshot = await FirebaseFirestore.instance
           .collection('tasks')
-          .where('driverId', isEqualTo: driverId)
+          .where('driverId', whereIn: searchDriverIds)
           .get();
 
       if (querySnapshot.docs.isEmpty) {
@@ -140,6 +158,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       int countDeleted = 0;
       final batch = FirebaseFirestore.instance.batch();
+      final Map<String, Map<String, int>> statsToIncrement = {}; // year -> { "tasks.month": count }
 
       for (var doc in querySnapshot.docs) {
         final data = doc.data();
@@ -149,18 +168,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         final isCompleted = status == 'completed' || status == 'terminada' || status == 'anulada';
 
-        // Layer of security: Only delete completed tasks that are already synced and have SQL ID
+        // Camada de segurança: Apenas apagar tarefas concluídas que já foram sincronizadas
         if (isCompleted && needsSqlSync != true && sqlId != null && sqlId.isNotEmpty) {
           batch.delete(doc.reference);
           countDeleted++;
+
+          // Extrair a data de conclusão (ou data/timestamp) para incrementar o histórico nas estatísticas
+          final timestampVal = data['completedAt'] ?? data['date'] ?? data['timestamp'];
+          DateTime? dt;
+          if (timestampVal is Timestamp) {
+            dt = timestampVal.toDate();
+          }
+
+          if (dt != null) {
+            final yearStr = dt.year.toString();
+            final monthStr = dt.month.toString();
+            final key = 'tasks.$monthStr';
+            
+            statsToIncrement.putIfAbsent(yearStr, () => {});
+            statsToIncrement[yearStr]![key] = (statsToIncrement[yearStr]![key] ?? 0) + 1;
+          }
         }
       }
+
+      // 3. Atualizar as estatísticas anuais agregadas antes de apagar as tarefas
+      statsToIncrement.forEach((year, fields) {
+        final docRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(driverId) // Garantir que as estatísticas ficam sempre no documento principal (Firebase UID)
+            .collection('yearly_stats')
+            .doc(year);
+        
+        final Map<String, dynamic> updates = {};
+        fields.forEach((key, count) {
+          updates[key] = FieldValue.increment(count);
+        });
+        
+        batch.set(docRef, updates, SetOptions(merge: true));
+      });
 
       if (countDeleted > 0) {
         await batch.commit();
         scaffoldMessenger.showSnackBar(
           SnackBar(
-            content: Text('$countDeleted tarefas concluídas e sincronizadas foram limpas do Firebase.'),
+            content: Text('$countDeleted tarefas concluídas foram arquivadas nas estatísticas e limpas do Firebase.'),
             backgroundColor: Colors.green,
           ),
         );
@@ -636,13 +687,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ? const Icon(Icons.person, color: Colors.blueGrey)
                 : null,
           ),
-          title: Text(
-            nome,
-            style: TextStyle(
-              fontWeight:
-                  isSelected ? FontWeight.bold : FontWeight.normal,
-              fontSize: 14,
-            ),
+          title: Row(
+            children: [
+              Text(
+                nome,
+                style: TextStyle(
+                  fontWeight:
+                      isSelected ? FontWeight.bold : FontWeight.normal,
+                  fontSize: 14,
+                ),
+              ),
+              if (data['syncError'] != null && data['syncError'] != 'All in sync') ...[
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.sync_problem,
+                  color: Colors.red,
+                  size: 16,
+                ),
+              ],
+            ],
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,

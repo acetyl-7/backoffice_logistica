@@ -244,7 +244,7 @@ class _DriverAuthorizationPanelState extends State<DriverAuthorizationPanel> {
                                 fontSize: 14, color: Colors.grey.shade600),
                           ),
                           const SizedBox(height: 8),
-                          // ── Fleet ID Badge (tempo real) ──
+                          // ── Fleet ID + Sync Status Badges (tempo real) ──
                           StreamBuilder<DocumentSnapshot>(
                             stream: FirebaseFirestore.instance
                                 .collection('users')
@@ -252,41 +252,82 @@ class _DriverAuthorizationPanelState extends State<DriverAuthorizationPanel> {
                                 .snapshots(),
                             builder: (context, snapshot) {
                               String? fleetId;
+                              String syncError = "All in sync";
                               if (snapshot.hasData && snapshot.data!.exists) {
                                 final liveData = snapshot.data!.data() as Map<String, dynamic>;
                                 fleetId = liveData['driverId']?.toString();
+                                syncError = liveData['syncError']?.toString() ?? "All in sync";
                               }
                               fleetId ??= widget.driverData['driverId']?.toString();
                               final hasFleetId = fleetId != null && fleetId.isNotEmpty;
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: hasFleetId ? Colors.indigo.shade50 : Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: hasFleetId ? Colors.indigo.shade200 : Colors.grey.shade300,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.tag,
-                                      size: 15,
-                                      color: hasFleetId ? Colors.indigo.shade600 : Colors.grey.shade500,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      hasFleetId ? 'Fleet ID: $fleetId' : 'Fleet ID: Não sincronizado',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: hasFleetId ? Colors.indigo.shade700 : Colors.grey.shade500,
-                                        fontStyle: hasFleetId ? FontStyle.normal : FontStyle.italic,
+                              final isSynced = syncError == "All in sync";
+
+                              return Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  // Fleet ID Badge
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: hasFleetId ? Colors.indigo.shade50 : Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: hasFleetId ? Colors.indigo.shade200 : Colors.grey.shade300,
                                       ),
                                     ),
-                                  ],
-                                ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.tag,
+                                          size: 15,
+                                          color: hasFleetId ? Colors.indigo.shade600 : Colors.grey.shade500,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          hasFleetId ? 'Fleet ID: $fleetId' : 'Fleet ID: Não sincronizado',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: hasFleetId ? Colors.indigo.shade700 : Colors.grey.shade500,
+                                            fontStyle: hasFleetId ? FontStyle.normal : FontStyle.italic,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Sync Status Badge
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: isSynced ? Colors.green.shade50 : Colors.red.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: isSynced ? Colors.green.shade200 : Colors.red.shade200,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          isSynced ? Icons.check_circle : Icons.sync_problem,
+                                          size: 15,
+                                          color: isSynced ? Colors.green.shade700 : Colors.red.shade700,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          isSynced ? 'All in sync' : syncError,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: isSynced ? Colors.green.shade700 : Colors.red.shade700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               );
                             },
                           ),
