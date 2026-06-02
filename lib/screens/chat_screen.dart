@@ -163,100 +163,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _showTaskAssignmentDialog() async {
-    final titleController = TextEditingController();
-    final descriptionController = TextEditingController();
-
-    // Referência ao contexto atual antes de await para evitar erros com unmounted
-    final currentContext = context;
-
-    await showDialog(
-      context: currentContext,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('Nova Tarefa'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Título da Tarefa',
-                    hintText: 'ex: Descarregar no Porto',
-                  ),
-                  autofocus: true,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Descrição',
-                    hintText: 'ex: Armazém 4, Porta B',
-                  ),
-                  maxLines: 3,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final title = titleController.text.trim();
-                final description = descriptionController.text.trim();
-
-                if (title.isEmpty) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(content: Text('O título da tarefa não pode estar vazio.')),
-                  );
-                  return;
-                }
-
-                try {
-                  await FirebaseFirestore.instance.collection('tasks').add({
-                    'driverId': widget.selectedDriverId,
-                    'title': title,
-                    'description': description,
-                    'status': 'pending',
-                    'timestamp': FieldValue.serverTimestamp(),
-                  });
-
-                  if (!dialogContext.mounted) return;
-                  Navigator.of(dialogContext).pop();
-                  
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(currentContext).showSnackBar(
-                    const SnackBar(
-                      content: Text('Tarefa atribuída com sucesso!'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                } catch (e) {
-                  if (!dialogContext.mounted) return;
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    SnackBar(
-                      content: Text('Erro ao atribuir tarefa: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              },
-              child: const Text('Atribuir'),
-            ),
-          ],
-        );
-      },
-    );
-    
-    titleController.dispose();
-    descriptionController.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     if (widget.selectedDriverId == null) {
@@ -298,20 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
         shadowColor: Colors.black12,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: ElevatedButton.icon(
-              onPressed: _showTaskAssignmentDialog,
-              icon: const Icon(Icons.assignment),
-              label: const Text('Nova Tarefa'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ),
-        ],
+
       ),
       body: Column(
         children: [
