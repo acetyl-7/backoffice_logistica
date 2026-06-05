@@ -1062,6 +1062,45 @@ class _TripsPanelState extends State<TripsPanel> {
                           ),
                         ),
 
+                        // Column: Tarefas
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'TAREFAS',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blueGrey.shade400,
+                                  letterSpacing: 1.1,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  const Icon(Icons.checklist, size: 20, color: Colors.blueGrey),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Concluídas: ${data['completedTasksCount'] ?? 0}',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                      ),
+                                      Text(
+                                        'A Decorrer: ${data['inProgressTasksCount'] ?? 0}',
+                                        style: TextStyle(fontSize: 13, color: Colors.blueGrey.shade600),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        
                         // Column 4: Localização e Google Maps
                         Expanded(
                           flex: 3,
